@@ -1,0 +1,16 @@
+# Ultralytics YOLO dataset config for the custom football detector.
+# Drop your labeled images/labels into dataset/images/{train,val} and
+# dataset/labels/{train,val} (CVAT/Label Studio's YOLO export already
+# produces matching image.jpg / image.txt pairs -- just sort them into
+# these folders by which clip they came from; see README Phase 2 notes
+# on splitting by clip, not randomly by frame).
+
+path: ../dataset   # relative to this file's location when used from training/
+train: images/train
+val: images/val
+
+names:
+  0: player
+  1: goalkeeper
+  2: referee
+  3: ball
