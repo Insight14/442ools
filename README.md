@@ -1,4 +1,4 @@
-# 442ools — 44tools for football vision
+# 442ools — for football vision
 
 <img width="1536" height="1024" alt="ChatGPT Image Aug 28, 2026 at 05_53_35 PM" src="https://github.com/user-attachments/assets/9d9b33b2-1c85-461d-8253-6e868eca2834" />
 
