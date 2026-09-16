@@ -63,3 +63,46 @@ track buffer) is something we'll revisit once real classes are in play.
 - **Phase 8 — Final rendering** (overlays, CSV export, match report).
 
 We'll build these one at a time, testing each before adding the next.
+
+## Train and run the custom detector
+
+After adding or changing labels, rebuild the dataset split and retrain. The
+training script validates the image/label folders and always refreshes the
+canonical checkpoint at `runs/detect/train/weights/best.pt`:
+
+```bash
+source venv/bin/activate
+python dataset/split_by_clip.py --labeled-dir data/labeled --val-clips olise_clip
+python src/train_detector.py --epochs 50
+python src/detect_track.py --source input_videos/olise_clip.mov --output output_videos/tracked_custom.mp4
+```
+
+The detector now automatically uses the trained checkpoint when it exists.
+Use `--model yolov8n.pt` only when you intentionally want the original COCO
+baseline. The training split must contain images and matching `.txt` labels;
+rerunning `split_by_clip.py` is required after uploading new labeled frames.
+
+## Prediction layer
+
+The detector can export pitch-space tracks and an interpretable baseline
+prediction stream when a homography is supplied:
+
+```bash
+python src/detect_track.py \
+  --source input_videos/olise_clip.mov \
+  --output output_videos/tracked_predictions.mp4 \
+  --homography pitch_calibration/homography_olise_clip.json \
+  --events-output output_videos/olise_predictions.jsonl
+```
+
+The JSONL contains player positions in metres, ball position, possession,
+pass/shot suggestions, completed-pass events, and a coarse play label. These
+are transparent heuristics for a baseline and training-data generator, not
+match-ready predictions.
+
+When `data_quality` is `ball_missing`, do not interpret the play label. The
+current custom detector has insufficient ball confidence on the Olise clip,
+so the next model task is a dedicated ball detector: label more small-ball
+instances, train at `imgsz=1280` or higher, validate ball recall, and only
+then enable possession and pass/shot evaluation. Player tracking and pitch
+coordinates can be developed in parallel.

@@ -31,6 +31,7 @@ Usage:
 """
 
 import argparse
+import json
 import sys
 import os
 import cv2
@@ -40,6 +41,8 @@ import supervision as sv
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from team_assigner.team_assigner import TeamAssigner
 from src.track_stabilizer import TrackStabilizer
+from src.play_predictor import PlayerState, PlayPredictor
+from pitch_calibration.pitch_transformer import PitchTransformer
 
 
 # COCO fallback class ids (used only if the loaded model isn't our custom one)
@@ -48,18 +51,45 @@ COCO_SPORTS_BALL_CLASS_ID = 32
 
 CUSTOM_CLASS_NAMES = {"player", "goalkeeper", "referee", "ball"}
 
-# Display colors: team1, team2, referee, fallback (ball / not-yet-classified)
+# Display colors: team1, team2, referee, fallback, goalkeeper.
 TEAM_PALETTE = sv.ColorPalette(colors=[
     sv.Color(255, 87, 51),    # team 1 -- orange
     sv.Color(51, 153, 255),   # team 2 -- blue
     sv.Color(255, 215, 0),    # referee -- yellow
     sv.Color(180, 180, 180),  # fallback -- gray (ball, or unclassified)
+    sv.Color(191, 64, 224),   # goalkeeper -- purple
 ])
-TEAM1_IDX, TEAM2_IDX, REFEREE_IDX, FALLBACK_IDX = 0, 1, 2, 3
+TEAM1_IDX, TEAM2_IDX, REFEREE_IDX, FALLBACK_IDX, GOALKEEPER_IDX = 0, 1, 2, 3, 4
+
+# OpenCV uses BGR tuples while the supervision palette uses RGB colors.
+RING_COLORS_BGR = [
+    (51, 87, 255),    # team 1 -- orange
+    (255, 153, 51),   # team 2 -- blue
+    (0, 215, 255),    # referee -- yellow
+    (180, 180, 180),  # fallback -- gray
+    (224, 64, 191),   # goalkeeper -- purple
+]
+
+
+def draw_tech_marker(frame, center, axes, color):
+    """Draw a restrained segmented ground marker around a tracked object."""
+    center = (int(center[0]), int(center[1]))
+    axes = (int(axes[0]), int(axes[1]))
+    outer_axes = (axes[0] + 2, axes[1] + 1)
+    cv2.ellipse(frame, center, outer_axes, 0, 0, 360, color, 1, cv2.LINE_AA)
+    for start_angle, end_angle, thickness in ((12, 102, 3), (132, 214, 2), (246, 326, 3)):
+        cv2.ellipse(frame, center, axes, 0, start_angle, end_angle, color, thickness, cv2.LINE_AA)
+    cv2.ellipse(frame, center, (max(2, axes[0] - 3), max(2, axes[1] - 2)), 0, 168, 206, color, 1, cv2.LINE_AA)
 
 TEAM_BOOTSTRAP_MIN_SAMPLES = 15   # jersey-color samples collected before fitting the 2-team clusters
 STABILIZER_MATCH_DISTANCE_PX = 90  # how close (in pixels) a new detection must be to a recently-lost same-team track to be merged
 STABILIZER_MAX_FRAME_GAP = 45      # how many frames a lost track stays "eligible" for re-matching (~1.5s at ~30fps)
+
+
+def default_model_path() -> str:
+    """Prefer trained weights, while keeping a fresh checkout runnable."""
+    trained_model = os.path.join("runs", "detect", "train", "weights", "best.pt")
+    return trained_model if os.path.isfile(trained_model) else "yolov8n.pt"
 
 
 def resolve_class_ids(model) -> dict:
@@ -88,7 +118,9 @@ def resolve_class_ids(model) -> dict:
         }
 
 
-def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf: float = 0.45):
+def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf: float = 0.45,
+    homography_path: str | None = None, events_output: str | None = None,
+    attacking_direction: int = 1):
     import numpy as np
 
     # Loads your custom-trained weights, or auto-downloads the pretrained
@@ -130,8 +162,10 @@ def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf
         match_distance_px=STABILIZER_MATCH_DISTANCE_PX,
         max_frame_gap=STABILIZER_MAX_FRAME_GAP,
     )
+    transformer = PitchTransformer(homography_path) if homography_path else None
+    predictor = PlayPredictor(attacking_direction=attacking_direction) if transformer else None
+    events_file = open(events_output, "w") if events_output else None
 
-    box_annotator = sv.EllipseAnnotator(color=TEAM_PALETTE)
     label_annotator = sv.LabelAnnotator(color=TEAM_PALETTE)
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -163,6 +197,9 @@ def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf
 
         labels = []
         color_lookup = []  # per-detection index into TEAM_PALETTE
+        ring_specs = []
+        players = []
+        ball_position = None
 
         for i in range(len(detections)):
             raw_id = int(detections.tracker_id[i])
@@ -199,26 +236,59 @@ def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf
 
                 if team is not None:
                     display_id = stabilizer.update(raw_id, team, foot_pos, frame_idx)
-                    palette_idx = TEAM1_IDX if team == 1 else TEAM2_IDX
+                    palette_idx = GOALKEEPER_IDX if is_goalkeeper else (TEAM1_IDX if team == 1 else TEAM2_IDX)
                 else:
                     display_id = raw_id  # not yet classified -- show raw id for now
-                    palette_idx = FALLBACK_IDX
+                    palette_idx = GOALKEEPER_IDX if is_goalkeeper else FALLBACK_IDX
 
                 display_id_seen.add(display_id)
+                ring_width = max(14, min(38, int((x2 - x1) * 0.52)))
+                ring_height = max(6, min(11, int(ring_width * 0.28)))
+                ring_center = (foot_pos[0], foot_pos[1] - ring_height)
+                ring_specs.append((ring_center, (ring_width, ring_height), palette_idx))
+                if predictor and team is not None:
+                    player_position, reliable = transformer.pixel_to_pitch_checked(foot_pos)
+                    if reliable:
+                        players.append(PlayerState(display_id, team, "goalkeeper" if is_goalkeeper else "player", player_position))
                 prefix = "GK " if is_goalkeeper else ""
                 labels.append(f"{prefix}#{display_id}")
                 color_lookup.append(palette_idx)
             elif is_referee:
                 labels.append(f"ref #{raw_id}")
                 color_lookup.append(REFEREE_IDX)
+                x1, y1, x2, y2 = bbox
+                foot_pos = ((x1 + x2) / 2, y2)
+                ring_width = max(14, min(38, int((x2 - x1) * 0.52)))
+                ring_height = max(6, min(11, int(ring_width * 0.28)))
+                ring_center = (foot_pos[0], foot_pos[1] - ring_height)
+                ring_specs.append((ring_center, (ring_width, ring_height), REFEREE_IDX))
             else:
                 labels.append("ball")
                 color_lookup.append(FALLBACK_IDX)
+                x1, y1, x2, y2 = bbox
+                ball_pixel = ((x1 + x2) / 2, (y1 + y2) / 2)
+                ball_radius = max(4, min(10, int(max(x2 - x1, y2 - y1) * 0.8)))
+                ring_specs.append((ball_pixel, (ball_radius, ball_radius), FALLBACK_IDX))
+                if predictor:
+                    ball_position, reliable = transformer.pixel_to_pitch_checked(ball_pixel)
+                    if not reliable:
+                        ball_position = None
 
         color_lookup_arr = np.array(color_lookup, dtype=int) if color_lookup else np.array([], dtype=int)
 
-        annotated = box_annotator.annotate(scene=frame.copy(), detections=detections, custom_color_lookup=color_lookup_arr)
+        annotated = frame.copy()
+        for center, axes, palette_idx in ring_specs:
+            draw_tech_marker(annotated, center, axes, RING_COLORS_BGR[palette_idx])
         annotated = label_annotator.annotate(scene=annotated, detections=detections, labels=labels, custom_color_lookup=color_lookup_arr)
+
+        if predictor:
+            prediction = predictor.update(frame_idx, frame_idx / fps, players, ball_position)
+            if events_file:
+                events_file.write(json.dumps({
+                    "players": [player.__dict__ for player in players],
+                    "ball_position": ball_position,
+                    **prediction,
+                }) + "\n")
 
         writer.write(annotated)
         frame_idx += 1
@@ -227,6 +297,8 @@ def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf
 
     cap.release()
     writer.release()
+    if events_file:
+        events_file.close()
     print(f"Done. Wrote {frame_idx} frames to {output_path}")
     print(f"Total distinct raw ByteTrack ids: {len(raw_id_seen)}")
     print(f"Total distinct stabilized display ids: {len(display_id_seen)}")
@@ -236,8 +308,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", required=True, help="Path to input video clip")
     parser.add_argument("--output", required=True, help="Path to write annotated output video")
-    parser.add_argument("--model", default="yolov8n.pt", help="YOLO model to use (default: pretrained yolov8n)")
+    parser.add_argument("--model", default=default_model_path(), help="YOLO model to use (defaults to trained best.pt when available)")
     parser.add_argument("--conf", type=float, default=0.45, help="Detection confidence threshold (higher = fewer, cleaner detections)")
+    parser.add_argument("--homography", help="Pitch homography JSON; enables pitch coordinates and play predictions")
+    parser.add_argument("--events-output", help="JSONL file for tracks, possession, events, and suggestions")
+    parser.add_argument("--attacking-direction", type=int, choices=(-1, 1), default=1, help="Team 1 attacks toward x=105 (1) or x=0 (-1)")
     args = parser.parse_args()
 
-    run(args.source, args.output, args.model, args.conf)
+    run(args.source, args.output, args.model, args.conf, args.homography, args.events_output, args.attacking_direction)
