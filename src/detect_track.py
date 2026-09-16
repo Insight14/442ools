@@ -34,7 +34,9 @@ import argparse
 import json
 import sys
 import os
+from collections import deque
 import cv2
+import numpy as np
 from ultralytics import YOLO
 import supervision as sv
 
@@ -81,6 +83,25 @@ def draw_tech_marker(frame, center, axes, color):
         cv2.ellipse(frame, center, axes, 0, start_angle, end_angle, color, thickness, cv2.LINE_AA)
     cv2.ellipse(frame, center, (max(2, axes[0] - 3), max(2, axes[1] - 2)), 0, 168, 206, color, 1, cv2.LINE_AA)
 
+
+def draw_glowing_ball(frame, center, radius, trail):
+    """Draw a bright ball core with a short fading motion trail."""
+    glow_color = (40, 150, 255)  # warm orange in BGR
+    glow_layer = np.zeros_like(frame)
+    for index, point in enumerate(trail):
+        age_ratio = (index + 1) / max(1, len(trail))
+        point_radius = max(2, int(radius * (0.45 + age_ratio * 0.35)))
+        cv2.circle(glow_layer, (int(point[0]), int(point[1])), point_radius, glow_color, -1, cv2.LINE_AA)
+    glow_layer = cv2.GaussianBlur(glow_layer, (0, 0), sigmaX=max(3.0, radius * 1.8))
+    cv2.addWeighted(glow_layer, 0.28, frame, 0.72, 0, frame)
+
+    for start, end in zip(trail, list(trail)[1:]):
+        cv2.line(frame, (int(start[0]), int(start[1])), (int(end[0]), int(end[1])), glow_color, max(1, radius // 2), cv2.LINE_AA)
+    ball_center = (int(center[0]), int(center[1]))
+    cv2.circle(frame, ball_center, max(3, radius + 2), (255, 255, 255), 1, cv2.LINE_AA)
+    cv2.circle(frame, ball_center, max(2, radius), (230, 245, 255), -1, cv2.LINE_AA)
+    cv2.circle(frame, ball_center, max(1, radius // 2), (255, 255, 255), -1, cv2.LINE_AA)
+
 TEAM_BOOTSTRAP_MIN_SAMPLES = 15   # jersey-color samples collected before fitting the 2-team clusters
 STABILIZER_MATCH_DISTANCE_PX = 90  # how close (in pixels) a new detection must be to a recently-lost same-team track to be merged
 STABILIZER_MAX_FRAME_GAP = 45      # how many frames a lost track stays "eligible" for re-matching (~1.5s at ~30fps)
@@ -120,7 +141,7 @@ def resolve_class_ids(model) -> dict:
 
 def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf: float = 0.45,
     homography_path: str | None = None, events_output: str | None = None,
-    attacking_direction: int = 1):
+    attacking_direction: int = 1, ball_conf: float = 0.05, ball_imgsz: int = 1280):
     import numpy as np
 
     # Loads your custom-trained weights, or auto-downloads the pretrained
@@ -172,6 +193,7 @@ def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf
     writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
     frame_idx = 0
+    ball_trail = deque(maxlen=10)
     raw_id_seen = set()       # for reporting: distinct raw ByteTrack ids seen
     display_id_seen = set()   # for reporting: distinct stabilized display ids seen
 
@@ -185,7 +207,7 @@ def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf
         # ball is a much smaller, harder target regardless of which model
         # is loaded, so it's held to a more lenient bar.
         person_results = model(frame, conf=conf, classes=person_like_classes, verbose=False)[0]
-        ball_results = model(frame, conf=0.10, classes=[ball_class], verbose=False)[0]
+        ball_results = model(frame, conf=ball_conf, imgsz=ball_imgsz, classes=[ball_class], verbose=False)[0]
 
         detections = sv.Detections.merge([
             sv.Detections.from_ultralytics(person_results),
@@ -198,6 +220,7 @@ def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf
         labels = []
         color_lookup = []  # per-detection index into TEAM_PALETTE
         ring_specs = []
+        ball_render_specs = []
         players = []
         ball_position = None
 
@@ -268,7 +291,8 @@ def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf
                 x1, y1, x2, y2 = bbox
                 ball_pixel = ((x1 + x2) / 2, (y1 + y2) / 2)
                 ball_radius = max(4, min(10, int(max(x2 - x1, y2 - y1) * 0.8)))
-                ring_specs.append((ball_pixel, (ball_radius, ball_radius), FALLBACK_IDX))
+                ball_render_specs.append((ball_pixel, ball_radius))
+                ball_trail.append(ball_pixel)
                 if predictor:
                     ball_position, reliable = transformer.pixel_to_pitch_checked(ball_pixel)
                     if not reliable:
@@ -279,6 +303,8 @@ def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf
         annotated = frame.copy()
         for center, axes, palette_idx in ring_specs:
             draw_tech_marker(annotated, center, axes, RING_COLORS_BGR[palette_idx])
+        for ball_center, ball_radius in ball_render_specs:
+            draw_glowing_ball(annotated, ball_center, ball_radius, ball_trail)
         annotated = label_annotator.annotate(scene=annotated, detections=detections, labels=labels, custom_color_lookup=color_lookup_arr)
 
         if predictor:
@@ -313,6 +339,8 @@ if __name__ == "__main__":
     parser.add_argument("--homography", help="Pitch homography JSON; enables pitch coordinates and play predictions")
     parser.add_argument("--events-output", help="JSONL file for tracks, possession, events, and suggestions")
     parser.add_argument("--attacking-direction", type=int, choices=(-1, 1), default=1, help="Team 1 attacks toward x=105 (1) or x=0 (-1)")
+    parser.add_argument("--ball-conf", type=float, default=0.05, help="Ball confidence threshold")
+    parser.add_argument("--ball-imgsz", type=int, default=1280, help="Inference size for the small ball")
     args = parser.parse_args()
 
-    run(args.source, args.output, args.model, args.conf, args.homography, args.events_output, args.attacking_direction)
+    run(args.source, args.output, args.model, args.conf, args.homography, args.events_output, args.attacking_direction, args.ball_conf, args.ball_imgsz)
