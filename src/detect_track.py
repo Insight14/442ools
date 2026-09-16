@@ -71,6 +71,7 @@ RING_COLORS_BGR = [
     (180, 180, 180),  # fallback -- gray
     (224, 64, 191),   # goalkeeper -- purple
 ]
+PREDICTION_PANEL_WIDTH = 360
 
 
 def draw_tech_marker(frame, center, axes, color):
@@ -101,6 +102,67 @@ def draw_glowing_ball(frame, center, radius, trail):
     cv2.circle(frame, ball_center, max(3, radius + 2), (255, 255, 255), 1, cv2.LINE_AA)
     cv2.circle(frame, ball_center, max(2, radius), (230, 245, 255), -1, cv2.LINE_AA)
     cv2.circle(frame, ball_center, max(1, radius // 2), (255, 255, 255), -1, cv2.LINE_AA)
+
+
+def draw_prediction_panel(frame, prediction, player_pixels):
+    """Add a tactical sidebar and projected pass/shot suggestion paths."""
+    panel = np.zeros((frame.shape[0], PREDICTION_PANEL_WIDTH, 3), dtype=np.uint8)
+    panel[:] = (12, 20, 31)
+    canvas = np.concatenate([frame, panel], axis=1)
+    panel_x = frame.shape[1]
+    cyan = (255, 210, 80)
+    white = (235, 242, 248)
+    muted = (145, 165, 180)
+    orange = (70, 150, 255)
+    green = (100, 220, 130)
+
+    cv2.line(canvas, (panel_x, 0), (panel_x, canvas.shape[0]), (45, 75, 95), 2)
+    cv2.putText(canvas, "LIVE PLAY INTELLIGENCE", (panel_x + 22, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.72, cyan, 2, cv2.LINE_AA)
+    cv2.putText(canvas, "442OOLS / TACTICAL FEED", (panel_x + 22, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.42, muted, 1, cv2.LINE_AA)
+    cv2.line(canvas, (panel_x + 22, 88), (panel_x + PREDICTION_PANEL_WIDTH - 22, 88), (45, 75, 95), 1)
+
+    play = prediction.get("play", "unknown").replace("_", " ").upper()
+    quality = prediction.get("data_quality", "unknown").replace("_", " ").upper()
+    possession = prediction.get("possession_track_id")
+    possession_text = f"TRACK #{possession}" if possession is not None else "UNCONFIRMED"
+    cv2.putText(canvas, "CURRENT PLAY", (panel_x + 22, 126), cv2.FONT_HERSHEY_SIMPLEX, 0.42, muted, 1, cv2.LINE_AA)
+    cv2.putText(canvas, play, (panel_x + 22, 158), cv2.FONT_HERSHEY_SIMPLEX, 0.9, white if quality == "USABLE" else orange, 2, cv2.LINE_AA)
+    cv2.putText(canvas, f"POSSESSION  {possession_text}", (panel_x + 22, 188), cv2.FONT_HERSHEY_SIMPLEX, 0.47, white, 1, cv2.LINE_AA)
+    cv2.putText(canvas, f"DATA QUALITY  {quality}", (panel_x + 22, 214), cv2.FONT_HERSHEY_SIMPLEX, 0.47, green if quality == "USABLE" else orange, 1, cv2.LINE_AA)
+
+    cv2.putText(canvas, "NEXT ACTIONS", (panel_x + 22, 264), cv2.FONT_HERSHEY_SIMPLEX, 0.48, cyan, 1, cv2.LINE_AA)
+    suggestions = prediction.get("suggestions", [])
+    if not suggestions:
+        cv2.putText(canvas, "No confident action", (panel_x + 22, 300), cv2.FONT_HERSHEY_SIMPLEX, 0.55, muted, 1, cv2.LINE_AA)
+    for index, suggestion in enumerate(suggestions[:4]):
+        y = 304 + index * 60
+        kind = suggestion["type"].upper()
+        confidence = int(round(suggestion.get("confidence", 0) * 100))
+        if kind == "PASS":
+            detail = f"#{suggestion['from_track_id']}  ->  #{suggestion['to_track_id']}"
+        else:
+            detail = f"TRACK #{suggestion.get('from_track_id', '?')}  /  {kind}"
+        cv2.putText(canvas, f"{kind}  {confidence}%", (panel_x + 22, y), cv2.FONT_HERSHEY_SIMPLEX, 0.62, white, 2, cv2.LINE_AA)
+        cv2.putText(canvas, detail, (panel_x + 22, y + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.48, muted, 1, cv2.LINE_AA)
+
+    for event in prediction.get("events", [])[:2]:
+        y = 570
+        cv2.putText(canvas, f"EVENT  {event['type'].replace('_', ' ').upper()}", (panel_x + 22, y), cv2.FONT_HERSHEY_SIMPLEX, 0.46, cyan, 1, cv2.LINE_AA)
+        cv2.putText(canvas, f"confidence {int(event.get('confidence', 0) * 100)}%", (panel_x + 22, y + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.44, muted, 1, cv2.LINE_AA)
+
+    for suggestion in suggestions[:4]:
+        if suggestion["type"] != "pass":
+            continue
+        source = player_pixels.get(suggestion.get("from_track_id"))
+        target = player_pixels.get(suggestion.get("to_track_id"))
+        if source is None or target is None:
+            continue
+        start = (int(source[0]), int(source[1]))
+        end = (int(target[0]), int(target[1]))
+        cv2.line(canvas, start, end, (60, 190, 255), 3, cv2.LINE_AA)
+        cv2.circle(canvas, end, 7, (60, 190, 255), -1, cv2.LINE_AA)
+
+    return canvas
 
 TEAM_BOOTSTRAP_MIN_SAMPLES = 15   # jersey-color samples collected before fitting the 2-team clusters
 STABILIZER_MATCH_DISTANCE_PX = 90  # how close (in pixels) a new detection must be to a recently-lost same-team track to be merged
@@ -142,8 +204,6 @@ def resolve_class_ids(model) -> dict:
 def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf: float = 0.45,
     homography_path: str | None = None, events_output: str | None = None,
     attacking_direction: int = 1, ball_conf: float = 0.05, ball_imgsz: int = 1280):
-    import numpy as np
-
     # Loads your custom-trained weights, or auto-downloads the pretrained
     # COCO model on first run if you pass the default yolov8n.pt.
     model = YOLO(model_name)
@@ -190,7 +250,8 @@ def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf
     label_annotator = sv.LabelAnnotator(color=TEAM_PALETTE)
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    output_width = width + PREDICTION_PANEL_WIDTH if predictor else width
+    writer = cv2.VideoWriter(output_path, fourcc, fps, (output_width, height))
 
     frame_idx = 0
     ball_trail = deque(maxlen=10)
@@ -221,6 +282,7 @@ def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf
         color_lookup = []  # per-detection index into TEAM_PALETTE
         ring_specs = []
         ball_render_specs = []
+        player_pixels = {}
         players = []
         ball_position = None
 
@@ -265,6 +327,7 @@ def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf
                     palette_idx = GOALKEEPER_IDX if is_goalkeeper else FALLBACK_IDX
 
                 display_id_seen.add(display_id)
+                player_pixels[display_id] = foot_pos
                 ring_width = max(14, min(38, int((x2 - x1) * 0.52)))
                 ring_height = max(6, min(11, int(ring_width * 0.28)))
                 ring_center = (foot_pos[0], foot_pos[1] - ring_height)
@@ -306,9 +369,10 @@ def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf
         for ball_center, ball_radius in ball_render_specs:
             draw_glowing_ball(annotated, ball_center, ball_radius, ball_trail)
         annotated = label_annotator.annotate(scene=annotated, detections=detections, labels=labels, custom_color_lookup=color_lookup_arr)
-
+        rendered = annotated
         if predictor:
             prediction = predictor.update(frame_idx, frame_idx / fps, players, ball_position)
+            rendered = draw_prediction_panel(annotated, prediction, player_pixels)
             if events_file:
                 events_file.write(json.dumps({
                     "players": [player.__dict__ for player in players],
@@ -316,7 +380,7 @@ def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf
                     **prediction,
                 }) + "\n")
 
-        writer.write(annotated)
+        writer.write(rendered)
         frame_idx += 1
         if frame_idx % 30 == 0:
             print(f"Processed {frame_idx} frames... (raw ids so far: {len(raw_id_seen)}, stabilized ids so far: {len(display_id_seen)})")
