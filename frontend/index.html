@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>META-VISION // 442OOLS — Football Tactical Intelligence Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,400;0,600;0,700;1,400;1,700&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="meta-vision-theme">
+    <div class="hologram-grid-bg"></div>
+    <div class="scanlines"></div>
+    <div class="glow-orb glow-orb-cyan"></div>
+    <div class="glow-orb glow-orb-emerald"></div>
+
+    <header class="tactical-header">
+        <div class="header-left">
+            <div class="brand-crest">
+                <div class="crest-icon">
+                    <span class="crosshair-dot"></span>
+                    <span class="crest-ring"></span>
+                </div>
+                <div class="brand-text">
+                    <h1 class="brand-title">META<span>-</span>VISION</h1>
+                    <span class="brand-subtitle">442OOLS // TACTICAL INTELLIGENCE LAB</span>
+                </div>
+            </div>
+            <div class="system-badge">
+                <span class="pulse-indicator"></span>
+                <span class="badge-text" id="systemStatusText">CORE ONLINE // YOLOv8 CUSTOM READY</span>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="telemetry-pill">
+                <span class="label">FRAME RATE</span>
+                <span class="value" id="fpsDisplay">-- FPS</span>
+            </div>
+            <div class="telemetry-pill">
+                <span class="label">DETECTION CLASSES</span>
+                <span class="value highlight">PLAYERS • GK • REF • BALL</span>
+            </div>
+            <div class="telemetry-pill">
+                <span class="label">COORDINATES</span>
+                <span class="value" id="coordSystemDisplay">METRIC HOMOGRAPHY</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="studio-layout">
+        <section class="viewport-section">
+            <div class="panel-header glass-card">
+                <div class="panel-title-wrap">
+                    <span class="tech-bracket">[</span>
+                    <span class="panel-title">OPTICAL TACTICAL FEED</span>
+                    <span class="tech-bracket">]</span>
+                    <span class="session-tag" id="currentSessionTag">STANDBY // NO CLIP ACTIVE</span>
+                </div>
+                <div class="viewport-actions">
+                    <button class="pill-btn active" id="btnViewOutput">ANALYZED OVERLAY</button>
+                    <button class="pill-btn" id="btnViewRaw">RAW FOOTAGE</button>
+                </div>
+            </div>
+
+            <div class="video-stage-container glass-card">
+                <div class="corner-hud top-left"></div>
+                <div class="corner-hud top-right"></div>
+                <div class="corner-hud bottom-left"></div>
+                <div class="corner-hud bottom-right"></div>
+
+                <div class="upload-dropzone" id="dropZone">
+                    <div class="dropzone-hologram">
+                        <div class="radar-sweep"></div>
+                        <div class="target-crosshair"></div>
+                    </div>
+                    <div class="dropzone-content">
+                        <div class="upload-icon-box">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                        </div>
+                        <h3>DROP MATCH FOOTAGE OR CLICK TO BROWSE</h3>
+                        <p class="dropzone-desc">Supports MP4, MOV, MKV broadcast camera footage</p>
+                        <input type="file" id="videoFileInput" accept="video/mp4,video/quicktime,video/x-matroska" hidden>
+                        <button class="cyber-button-sm" onclick="document.getElementById('videoFileInput').click()">
+                            <span>SELECT FILE</span>
+                        </button>
+                    </div>
+
+                    <div class="preset-clips-bar">
+                        <span class="preset-label">OR INSTANT LOAD PRESET CLIP:</span>
+                        <div class="preset-buttons-group" id="presetButtonsGroup"></div>
+                    </div>
+                </div>
+
+                <div class="active-video-wrapper" id="activeVideoWrapper" style="display: none;">
+                    <video id="mainVideoPlayer" controls playsinline></video>
+                    <div class="video-hud-overlay" id="videoHudOverlay">
+                        <div class="hud-top-metrics">
+                            <div class="hud-metric-card">
+                                <span class="lbl">POSSESSION</span>
+                                <span class="val text-cyan" id="hudPossessionVal">TEAM 1</span>
+                            </div>
+                            <div class="hud-metric-card">
+                                <span class="lbl">BALL TRACK</span>
+                                <span class="val text-emerald" id="hudBallStatus">LOCKED</span>
+                            </div>
+                            <div class="hud-metric-card">
+                                <span class="lbl">SPACE EXPLOITED</span>
+                                <span class="val text-gold" id="hudSpaceVal">79%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="analysis-loading-overlay" id="analysisOverlay" style="display: none;">
+                    <div class="loading-cyber-spinner">
+                        <div class="spinner-ring outer"></div>
+                        <div class="spinner-ring inner"></div>
+                        <div class="spinner-logo">KDB</div>
+                    </div>
+                    <div class="loading-status-wrap">
+                        <h2 class="loading-title">RUNNING META-VISION INFERENCE</h2>
+                        <p class="loading-step" id="loadingStepText">Tracking players, ball, and referee trajectories...</p>
+                        <div class="cyber-progress-bar">
+                            <div class="progress-fill" id="analysisProgressBar"></div>
+                        </div>
+                        <div class="terminal-log-stream" id="terminalLogs">
+                            <div class="log-line">[SYSTEM] Initializing ByteTrack & YOLOv8 detector...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tactical-config-bar glass-card">
+                <div class="config-item">
+                    <label>DETECTION ENGINE</label>
+                    <select id="selectModel">
+                        <option value="custom">Custom 4-Class Model (Player/GK/Ref/Ball)</option>
+                        <option value="coco">COCO Baseline (yolov8n.pt)</option>
+                    </select>
+                </div>
+                <div class="config-item">
+                    <label>PITCH HOMOGRAPHY</label>
+                    <select id="selectHomography">
+                        <option value="auto">Auto-detect from clip name</option>
+                        <option value="none">None (Pixel space only)</option>
+                    </select>
+                </div>
+                <div class="config-item">
+                    <label>ATTACKING DIRECTION</label>
+                    <select id="selectAttackingDir">
+                        <option value="1">Team 1 attacks Right (x=105m)</option>
+                        <option value="-1">Team 1 attacks Left (x=0m)</option>
+                    </select>
+                </div>
+                <div class="config-item conf-slider-wrap">
+                    <label>CONFIDENCE <span id="confVal">0.35</span></label>
+                    <input type="range" id="sliderConf" min="0.10" max="0.80" step="0.05" value="0.35">
+                </div>
+                <div class="config-action">
+                    <button class="cyber-action-button" id="btnStartAnalysis">
+                        <div class="btn-glow"></div>
+                        <span class="btn-text">INITIALIZE ANALYSIS</span>
+                        <svg class="btn-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="9 18 15 12 9 6"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <aside class="sidebar-section">
+            <div class="tactical-card glass-card">
+                <div class="card-header">
+                    <div class="title-with-pulse">
+                        <span class="radar-dot"></span>
+                        <h3>2D PITCH TELEMETRY & VECTORS</h3>
+                    </div>
+                    <span class="metric-tag" id="activePlayerCount">0 PLAYERS</span>
+                </div>
+                <div class="pitch-canvas-wrapper">
+                    <canvas id="pitchCanvas" width="340" height="220"></canvas>
+                    <div class="pitch-legend">
+                        <span class="legend-item"><span class="dot team1"></span> Team 1</span>
+                        <span class="legend-item"><span class="dot team2"></span> Team 2</span>
+                        <span class="legend-item"><span class="dot ref"></span> Referee</span>
+                        <span class="legend-item"><span class="dot gk"></span> GK</span>
+                        <span class="legend-item"><span class="dot ball"></span> Ball</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tactical-card glass-card">
+                <div class="card-header">
+                    <div class="title-with-pulse">
+                        <span class="radar-dot cyan"></span>
+                        <h3>PASS RECOMMENDATIONS & xA</h3>
+                    </div>
+                    <span class="badge-accent" id="threatBadge">HIGH OPPORTUNITY</span>
+                </div>
+                
+                <div class="pass-suggestion-deck" id="passSuggestionsContainer">
+                    <div class="empty-state-notice">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M12 16v-4"/>
+                            <path d="M12 8h.01"/>
+                        </svg>
+                        <span>Run analysis on clip with pitch calibration to generate tactical pass telemetry</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tactical-card glass-card metrics-card">
+                <div class="card-header">
+                    <h3>TACTICAL METRICS</h3>
+                    <span class="timestamp-tag" id="playbackTimestamp">00:00.00</span>
+                </div>
+                <div class="metrics-grid">
+                    <div class="metric-tile">
+                        <span class="metric-title">PLAY PATTERN</span>
+                        <span class="metric-val highlight" id="playPatternVal">STANDBY</span>
+                    </div>
+                    <div class="metric-tile">
+                        <span class="metric-title">BALL CARRIER</span>
+                        <span class="metric-val" id="ballCarrierVal">--</span>
+                    </div>
+                    <div class="metric-tile">
+                        <span class="metric-title">PRESSURE INDEX</span>
+                        <span class="metric-val text-orange" id="pressureIndexVal">LOW</span>
+                    </div>
+                    <div class="metric-tile">
+                        <span class="metric-title">GOAL THREAT</span>
+                        <span class="metric-val text-emerald" id="goalThreatVal">0.42 xG</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="export-actions-row">
+                <a class="cyber-btn-outline" id="btnDownloadVideo" href="#" download style="display:none;">
+                    <span>DOWNLOAD ANALYZED VIDEO</span>
+                </a>
+                <a class="cyber-btn-outline" id="btnDownloadEvents" href="#" download style="display:none;">
+                    <span>EXPORT TELEMETRY JSON</span>
+                </a>
+            </div>
+        </aside>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
