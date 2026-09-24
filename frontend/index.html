@@ -12,30 +12,50 @@
 <body class="meta-vision-theme">
     <!-- Cinematic Interactive Intro Splash Page -->
     <div id="introSplashScreen" class="splash-screen">
-        <div class="splash-bg-image" style="background-image: url('splash_bg.jpg');"></div>
-        <div class="splash-vignette-overlay"></div>
-        <div class="splash-grid-lines"></div>
-
-        <!-- Canvas for dynamic 4-4-2 formation nodes and laser shooting star connection lines -->
-        <canvas id="splashFormationCanvas"></canvas>
-
-        <div class="splash-center-content">
-            <div class="splash-brand-title">
-                <span class="letter l-4-1">4</span>
-                <span class="letter l-4-2">4</span>
-                <span class="letter l-2">2</span>
-                <span class="letter l-ools">ools</span>
-            </div>
-            <div class="splash-tagline">
-                <span class="tagline-bracket">[</span>
-                <span class="tagline-text">TACTICAL INTELLIGENCE // META-VISION COMPUTER VISION</span>
-                <span class="tagline-bracket">]</span>
-            </div>
-            <div class="splash-system-status">
-                <span class="status-pulse"></span>
-                <span class="status-lbl">INITIALIZING PITCH MATRIX & TRACKING ENGINE...</span>
+        <!-- Stage 1: Dark Constellation & Grid Layer -->
+        <div class="splash-constellation-layer">
+            <div class="splash-vignette-overlay"></div>
+            <div class="splash-grid-lines"></div>
+            <canvas id="splashFormationCanvas"></canvas>
+            
+            <div class="splash-center-content">
+                <div class="splash-brand-title">
+                    <span class="letter l-4-1">4</span>
+                    <span class="letter l-4-2">4</span>
+                    <span class="letter l-2">2</span>
+                    <span class="letter l-ools">ools</span>
+                </div>
+                <div class="splash-tagline">
+                    <span class="tagline-bracket">[</span>
+                    <span class="tagline-text">TACTICAL INTELLIGENCE // META-VISION COMPUTER VISION</span>
+                    <span class="tagline-bracket">]</span>
+                </div>
+                <div class="splash-system-status">
+                    <span class="status-pulse"></span>
+                    <span class="status-lbl">CONNECTING TACTICAL MATRIX...</span>
+                </div>
             </div>
         </div>
+
+        <!-- Stage 2: Hero Stadium Showcase Layer (Fades in, shows horizontal loading dots for 2-3s) -->
+        <div class="splash-stadium-layer" id="splashStadiumLayer">
+            <div class="splash-bg-image" style="background-image: url('splash_bg.jpg');"></div>
+            <div class="splash-stadium-vignette"></div>
+            
+            <div class="splash-stadium-loader">
+                <div class="stadium-loader-text">INITIALIZING META-VISION TACTICAL FEED</div>
+                <div class="horizontal-dots-loader">
+                    <span class="dot d1"></span>
+                    <span class="dot d2"></span>
+                    <span class="dot d3"></span>
+                    <span class="dot d4"></span>
+                    <span class="dot d5"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pixelation Transition Canvas Overlay -->
+        <canvas id="splashPixelCanvas" class="splash-pixel-canvas"></canvas>
 
         <button id="btnSkipSplash" class="splash-skip-btn">
             <span>SKIP INTRO [ESC]</span>

@@ -476,92 +476,97 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================================
     function initIntroSplash() {
         const splashScreen = document.getElementById('introSplashScreen');
+        const constellationLayer = document.querySelector('.splash-constellation-layer');
+        const stadiumLayer = document.getElementById('splashStadiumLayer');
         const splashCanvas = document.getElementById('splashFormationCanvas');
+        const pixelCanvas = document.getElementById('splashPixelCanvas');
         const btnSkip = document.getElementById('btnSkipSplash');
         if (!splashScreen || !splashCanvas) return;
 
         const sCtx = splashCanvas.getContext('2d');
+        const pCtx = pixelCanvas ? pixelCanvas.getContext('2d') : null;
         let animationFrameId = null;
         let isDismissed = false;
 
         function resizeCanvas() {
             splashCanvas.width = window.innerWidth;
             splashCanvas.height = window.innerHeight;
+            if (pixelCanvas) {
+                pixelCanvas.width = window.innerWidth;
+                pixelCanvas.height = window.innerHeight;
+            }
         }
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        // 4-4-2 Formation Node Coordinates (normalized 0 to 1 relative to viewport)
-        // Formation: 1 GK, 4 DEF, 4 MID, 2 ATT
+        // 4-4-2 Formation Node Coordinates (normalized relative to viewport)
         const formationNodes = [
             // GK (bottom center)
-            { id: 'GK', label: 'GK', nx: 0.50, ny: 0.88, radius: 12, color: '#bf40e0', glow: 'rgba(191, 64, 224, 0.8)' },
+            { id: 'GK', label: 'GK', nx: 0.50, ny: 0.86, radius: 12, color: '#bf40e0', glow: 'rgba(191, 64, 224, 0.8)' },
             // 4 Defenders (LB, CB1, CB2, RB)
-            { id: 'LB', label: '3', nx: 0.22, ny: 0.70, radius: 10, color: '#00f0ff', glow: 'rgba(0, 240, 255, 0.8)' },
-            { id: 'CB1', label: '4', nx: 0.40, ny: 0.72, radius: 10, color: '#00f0ff', glow: 'rgba(0, 240, 255, 0.8)' },
-            { id: 'CB2', label: '5', nx: 0.60, ny: 0.72, radius: 10, color: '#00f0ff', glow: 'rgba(0, 240, 255, 0.8)' },
-            { id: 'RB', label: '2', nx: 0.78, ny: 0.70, radius: 10, color: '#00f0ff', glow: 'rgba(0, 240, 255, 0.8)' },
+            { id: 'LB', label: '3', nx: 0.22, ny: 0.69, radius: 10, color: '#00f0ff', glow: 'rgba(0, 240, 255, 0.8)' },
+            { id: 'CB1', label: '4', nx: 0.40, ny: 0.71, radius: 10, color: '#00f0ff', glow: 'rgba(0, 240, 255, 0.8)' },
+            { id: 'CB2', label: '5', nx: 0.60, ny: 0.71, radius: 10, color: '#00f0ff', glow: 'rgba(0, 240, 255, 0.8)' },
+            { id: 'RB', label: '2', nx: 0.78, ny: 0.69, radius: 10, color: '#00f0ff', glow: 'rgba(0, 240, 255, 0.8)' },
             // 4 Midfielders (LM, CM1, CM2, RM)
-            { id: 'LM', label: '11', nx: 0.18, ny: 0.48, radius: 10, color: '#00e676', glow: 'rgba(0, 230, 118, 0.8)' },
-            { id: 'CM1', label: '8', nx: 0.38, ny: 0.50, radius: 11, color: '#00e676', glow: 'rgba(0, 230, 118, 0.8)' },
-            { id: 'CM2', label: '17', nx: 0.62, ny: 0.50, radius: 13, color: '#ffd700', glow: 'rgba(255, 215, 0, 0.9)', highlight: true }, // KDB position
-            { id: 'RM', label: '7', nx: 0.82, ny: 0.48, radius: 10, color: '#00e676', glow: 'rgba(0, 230, 118, 0.8)' },
+            { id: 'LM', label: '11', nx: 0.18, ny: 0.47, radius: 10, color: '#00e676', glow: 'rgba(0, 230, 118, 0.8)' },
+            { id: 'CM1', label: '8', nx: 0.38, ny: 0.49, radius: 11, color: '#00e676', glow: 'rgba(0, 230, 118, 0.8)' },
+            { id: 'CM2', label: '17', nx: 0.62, ny: 0.49, radius: 13, color: '#ffd700', glow: 'rgba(255, 215, 0, 0.9)', highlight: true }, // KDB
+            { id: 'RM', label: '7', nx: 0.82, ny: 0.47, radius: 10, color: '#00e676', glow: 'rgba(0, 230, 118, 0.8)' },
             // 2 Attackers (ST1, ST2)
-            { id: 'ST1', label: '9', nx: 0.38, ny: 0.26, radius: 11, color: '#ff6b35', glow: 'rgba(255, 107, 53, 0.8)' },
-            { id: 'ST2', label: '10', nx: 0.62, ny: 0.26, radius: 11, color: '#ff6b35', glow: 'rgba(255, 107, 53, 0.8)' }
+            { id: 'ST1', label: '9', nx: 0.38, ny: 0.24, radius: 11, color: '#ff6b35', glow: 'rgba(255, 107, 53, 0.8)' },
+            { id: 'ST2', label: '10', nx: 0.62, ny: 0.24, radius: 11, color: '#ff6b35', glow: 'rgba(255, 107, 53, 0.8)' }
         ];
 
-        // Formation Connection Links (Tactical Passing Network)
+        // Comprehensive Tactical Passing Links
         const links = [
-            // GK to Def
             [0, 1], [0, 2], [0, 3], [0, 4],
-            // Def line
             [1, 2], [2, 3], [3, 4],
-            // Def to Mid
             [1, 5], [2, 6], [3, 7], [4, 8],
             [2, 7], [3, 6],
-            // Mid line
             [5, 6], [6, 7], [7, 8],
-            // Mid to Attack
             [5, 9], [6, 9], [7, 9], [7, 10], [8, 10], [6, 10],
-            // Attack line
             [9, 10]
         ];
 
-        // Shooting star passing particles traveling across formation links
-        const shootingStars = [];
-        for (let i = 0; i < 18; i++) {
-            const linkIdx = Math.floor(Math.random() * links.length);
-            shootingStars.push({
-                linkIdx: linkIdx,
-                progress: Math.random(),
-                speed: 0.006 + Math.random() * 0.012,
-                tailLength: 0.15 + Math.random() * 0.2,
-                color: Math.random() > 0.4 ? '#00f0ff' : '#00e676',
-                size: 2.5 + Math.random() * 2
-            });
-        }
+        // Exactly 2 Rapid Laser Shooting Stars traversing continuously across formation points
+        const shootingStars = [
+            {
+                linkIdx: 0,
+                progress: 0.0,
+                speed: 0.032, // rapid yet readable
+                tailLength: 0.45,
+                color: '#00f0ff',
+                size: 3.5
+            },
+            {
+                linkIdx: 11,
+                progress: 0.5,
+                speed: 0.028,
+                tailLength: 0.45,
+                color: '#00e676',
+                size: 3.5
+            }
+        ];
 
-        // Formation appearance progress (0 to 1)
         let formationAlpha = 0;
-        let formationTargetAlpha = 1;
-        const startTime = performance.now();
+        let animationStart = performance.now();
 
         function renderFormation() {
             if (isDismissed) return;
-            const elapsed = performance.now() - startTime;
+            const elapsed = performance.now() - animationStart;
             const w = splashCanvas.width;
             const h = splashCanvas.height;
 
             sCtx.clearRect(0, 0, w, h);
 
-            // Gradually fade in formation
+            // Fade in formation after initial delay
             if (elapsed > 1200) {
-                formationAlpha = Math.min(1, formationAlpha + 0.025);
+                formationAlpha = Math.min(1, formationAlpha + 0.035);
             }
 
             if (formationAlpha > 0) {
-                // 1. Draw connecting tactical formation laser lines
+                // 1. Tactical grid lines between positions
                 links.forEach(([fromIdx, toIdx]) => {
                     const from = formationNodes[fromIdx];
                     const to = formationNodes[toIdx];
@@ -573,19 +578,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     sCtx.beginPath();
                     sCtx.moveTo(x1, y1);
                     sCtx.lineTo(x2, y2);
-                    sCtx.strokeStyle = `rgba(0, 240, 255, ${0.18 * formationAlpha})`;
+                    sCtx.strokeStyle = `rgba(0, 240, 255, ${0.16 * formationAlpha})`;
                     sCtx.lineWidth = 1;
                     sCtx.setLineDash([4, 6]);
                     sCtx.stroke();
                     sCtx.setLineDash([]);
                 });
 
-                // 2. Draw Shooting Star Particles traversing links
-                shootingStars.forEach(star => {
+                // 2. Exactly 2 Rapid Laser Shooting Stars
+                shootingStars.forEach((star, sIdx) => {
                     star.progress += star.speed;
                     if (star.progress > 1) {
                         star.progress = 0;
-                        star.linkIdx = Math.floor(Math.random() * links.length);
+                        // Cycle to next connected tactical link
+                        star.linkIdx = (star.linkIdx + 3 + sIdx * 5) % links.length;
                     }
 
                     const [fromIdx, toIdx] = links[star.linkIdx];
@@ -603,7 +609,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     const tailX = x1 + (x2 - x1) * tailP;
                     const tailY = y1 + (y2 - y1) * tailP;
 
-                    // Gradient beam tail
                     const grad = sCtx.createLinearGradient(tailX, tailY, curX, curY);
                     grad.addColorStop(0, 'rgba(0, 240, 255, 0)');
                     grad.addColorStop(0.7, star.color);
@@ -618,28 +623,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // Star head glow
                     sCtx.beginPath();
-                    sCtx.arc(curX, curY, star.size * 1.5, 0, Math.PI * 2);
+                    sCtx.arc(curX, curY, star.size * 1.6, 0, Math.PI * 2);
                     sCtx.fillStyle = '#ffffff';
                     sCtx.shadowColor = star.color;
-                    sCtx.shadowBlur = 10;
+                    sCtx.shadowBlur = 14;
                     sCtx.fill();
                     sCtx.shadowBlur = 0;
                 });
 
-                // 3. Draw Formation Player Position Nodes
+                // 3. Formation Player Position Nodes
                 formationNodes.forEach((node, idx) => {
                     const x = node.nx * w;
                     const y = node.ny * h;
-                    const pulse = Math.sin((elapsed / 300) + idx) * 2;
+                    const pulse = Math.sin((elapsed / 250) + idx) * 2;
 
-                    // Outer tactical radar pulse circle
                     sCtx.beginPath();
                     sCtx.arc(x, y, node.radius + 6 + pulse, 0, Math.PI * 2);
                     sCtx.strokeStyle = node.glow;
                     sCtx.lineWidth = 1;
                     sCtx.stroke();
 
-                    // Node core
                     sCtx.beginPath();
                     sCtx.arc(x, y, node.radius, 0, Math.PI * 2);
                     sCtx.fillStyle = '#060d19';
@@ -651,7 +654,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     sCtx.stroke();
                     sCtx.shadowBlur = 0;
 
-                    // Jersey Number / Role
                     sCtx.fillStyle = '#ffffff';
                     sCtx.font = `600 ${node.radius > 11 ? 11 : 9}px "JetBrains Mono"`;
                     sCtx.textAlign = 'center';
@@ -665,8 +667,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         renderFormation();
 
-        // Staggered Text Reveal Timeline:
-        // '4' -> '4' -> '2' -> 'ools' -> tagline -> system ready -> fade into app
+        // ---------------------------------------------------------------------
+        // MULTI-STAGE TIMELINE SEQUENCE
+        // ---------------------------------------------------------------------
         const l41 = document.querySelector('.splash-brand-title .l-4-1');
         const l42 = document.querySelector('.splash-brand-title .l-4-2');
         const l2 = document.querySelector('.splash-brand-title .l-2');
@@ -674,30 +677,69 @@ document.addEventListener('DOMContentLoaded', () => {
         const tagline = document.querySelector('.splash-tagline');
         const sysStatus = document.querySelector('.splash-system-status');
 
-        // Step 1: Reveal first '4' (0.3s)
-        setTimeout(() => { if (!isDismissed && l41) l41.classList.add('reveal'); }, 300);
+        // Initial 0.8s intentional pause before starting logo build
+        const INIT_DELAY = 800;
 
-        // Step 2: Reveal second '4' (0.8s)
-        setTimeout(() => { if (!isDismissed && l42) l42.classList.add('reveal'); }, 850);
+        // Stage 1: Staggered '4' -> '4' -> '2' -> 'ools'
+        setTimeout(() => { if (!isDismissed && l41) l41.classList.add('reveal'); }, INIT_DELAY + 100);
+        setTimeout(() => { if (!isDismissed && l42) l42.classList.add('reveal'); }, INIT_DELAY + 550);
+        setTimeout(() => { if (!isDismissed && l2) l2.classList.add('reveal'); }, INIT_DELAY + 1000);
+        setTimeout(() => { if (!isDismissed && lOols) lOols.classList.add('reveal'); }, INIT_DELAY + 1500);
 
-        // Step 3: Reveal '2' (1.4s)
-        setTimeout(() => { if (!isDismissed && l2) l2.classList.add('reveal'); }, 1400);
-
-        // Step 4: Reveal 'ools' (2.0s)
-        setTimeout(() => { if (!isDismissed && lOols) lOols.classList.add('reveal'); }, 2000);
-
-        // Step 5: Reveal Tagline & System Status (2.6s)
         setTimeout(() => {
             if (!isDismissed) {
                 if (tagline) tagline.classList.add('reveal');
                 if (sysStatus) sysStatus.classList.add('reveal');
             }
-        }, 2600);
+        }, INIT_DELAY + 1900);
 
-        // Step 6: Smoothly Fade into main app (4.6s)
+        // Stage 2: Transition from Stage 1 into Stage 2 (Meta-Vision Stadium Showcase + Horizontal Loading Dots)
+        const STAGE2_TRIGGER = INIT_DELAY + 3200;
+        setTimeout(() => {
+            if (!isDismissed) {
+                if (constellationLayer) constellationLayer.classList.add('fade-stage');
+                if (stadiumLayer) stadiumLayer.classList.add('active-showcase');
+            }
+        }, STAGE2_TRIGGER);
+
+        // Stage 3: After showing stadium + horizontal dots for 2.5s, trigger pixelation & fade into homepage
+        const DISMISS_TRIGGER = STAGE2_TRIGGER + 2600;
         const autoDismissTimer = setTimeout(() => {
-            dismissSplash();
-        }, 4600);
+            runPixelationTransition();
+        }, DISMISS_TRIGGER);
+
+        function runPixelationTransition() {
+            if (isDismissed) return;
+            if (!pixelCanvas || !pCtx) {
+                dismissSplash();
+                return;
+            }
+
+            // Pixelate transition effect
+            pixelCanvas.classList.add('active');
+            let pixelSize = 4;
+            const maxPixelSize = 60;
+            const w = pixelCanvas.width;
+            const h = pixelCanvas.height;
+
+            const pixelInterval = setInterval(() => {
+                pixelSize += 6;
+                pCtx.fillStyle = '#030710';
+                for (let x = 0; x < w; x += pixelSize) {
+                    for (let y = 0; y < h; y += pixelSize) {
+                        if (Math.random() > 0.4) {
+                            pCtx.fillStyle = Math.random() > 0.5 ? '#00f0ff' : '#00e676';
+                            pCtx.globalAlpha = Math.random() * 0.4;
+                            pCtx.fillRect(x, y, pixelSize, pixelSize);
+                        }
+                    }
+                }
+                if (pixelSize >= maxPixelSize) {
+                    clearInterval(pixelInterval);
+                    dismissSplash();
+                }
+            }, 60);
+        }
 
         function dismissSplash() {
             if (isDismissed) return;
@@ -708,14 +750,13 @@ document.addEventListener('DOMContentLoaded', () => {
             splashScreen.classList.add('fade-out');
             setTimeout(() => {
                 splashScreen.style.display = 'none';
-            }, 1200);
+            }, 1000);
         }
 
         if (btnSkip) {
             btnSkip.addEventListener('click', dismissSplash);
         }
 
-        // Allow pressing Escape to skip intro instantly
         window.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 dismissSplash();
@@ -727,4 +768,5 @@ document.addEventListener('DOMContentLoaded', () => {
     initSystem();
     initIntroSplash();
 });
+
 
