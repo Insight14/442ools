@@ -2,7 +2,7 @@
 
 <img width="1536" height="1024" alt="ChatGPT Image Aug 28, 2026 at 05_53_35 PM" src="https://github.com/user-attachments/assets/9d9b33b2-1c85-461d-8253-6e868eca2834" />
 
-A lightweight football computer-vision toolkit (pronounced "forty-four-tools" — cheeky, like 442oons) for analyzing players, goalkeepers, and referees to predict plays such as passes and goalscoring opportunities.
+A lightweight football computer-vision toolkit (pronounced "four-four-tools" — cheeky, like 442oons) for analyzing players, goalkeepers, and referees to predict plays such as passes and goalscoring opportunities.
 
 ## What this is
 
