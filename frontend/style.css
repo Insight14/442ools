@@ -1003,3 +1003,250 @@ body {
         height: 440px;
     }
 }
+
+/* ==========================================================================
+   CINEMATIC INTRO SPLASH SCREEN (442OOLS / META-VISION)
+   ========================================================================== */
+.splash-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 9999;
+    background-color: #030710;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    transition: opacity 1.2s cubic-bezier(0.4, 0, 0.2, 1), transform 1.2s cubic-bezier(0.4, 0, 0.2, 1), filter 1.2s ease;
+}
+
+.splash-screen.fade-out {
+    opacity: 0;
+    transform: scale(1.08);
+    filter: blur(12px) brightness(1.4);
+    pointer-events: none;
+}
+
+/* Background image with player silhouettes & stadium lighting */
+.splash-bg-image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    filter: brightness(0.7) contrast(1.15) saturate(1.2);
+    transform: scale(1.04);
+    animation: splashBgZoom 9s ease-out forwards;
+    z-index: 1;
+}
+
+@keyframes splashBgZoom {
+    0% { transform: scale(1.12); filter: brightness(0.3) blur(6px); }
+    40% { filter: brightness(0.65) blur(0px); }
+    100% { transform: scale(1.0); filter: brightness(0.7) blur(0px); }
+}
+
+.splash-vignette-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle at center, rgba(6, 12, 24, 0.45) 0%, rgba(3, 7, 16, 0.92) 80%, #030710 100%),
+                linear-gradient(180deg, rgba(0, 240, 255, 0.08) 0%, transparent 40%, rgba(0, 230, 118, 0.08) 100%);
+    z-index: 2;
+    pointer-events: none;
+}
+
+.splash-grid-lines {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: 
+        linear-gradient(to right, rgba(0, 240, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(0, 240, 255, 0.05) 1px, transparent 1px);
+    background-size: 48px 48px;
+    z-index: 3;
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+/* Formation Canvas */
+#splashFormationCanvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 4;
+    pointer-events: none;
+}
+
+/* Splash Center Typography */
+.splash-center-content {
+    position: relative;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 16px;
+}
+
+.splash-brand-title {
+    font-family: var(--font-heading);
+    font-size: clamp(64px, 12vw, 150px);
+    font-weight: 700;
+    letter-spacing: 6px;
+    line-height: 1;
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    text-transform: uppercase;
+}
+
+.splash-brand-title .letter {
+    display: inline-block;
+    opacity: 0;
+    transform: translateY(40px) scale(0.7);
+    filter: blur(12px);
+    transition: all 0.9s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.splash-brand-title .letter.reveal {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0px);
+}
+
+.splash-brand-title .letter.l-4-1 {
+    color: #ffffff;
+    text-shadow: 0 0 25px rgba(0, 240, 255, 0.8), 0 0 50px rgba(0, 240, 255, 0.4);
+}
+
+.splash-brand-title .letter.l-4-2 {
+    color: var(--accent-cyan);
+    text-shadow: 0 0 25px rgba(0, 240, 255, 0.9), 0 0 60px rgba(0, 240, 255, 0.6);
+}
+
+.splash-brand-title .letter.l-2 {
+    color: var(--accent-emerald);
+    text-shadow: 0 0 25px rgba(0, 230, 118, 0.9), 0 0 60px rgba(0, 230, 118, 0.6);
+}
+
+.splash-brand-title .letter.l-ools {
+    color: #ffffff;
+    font-weight: 600;
+    letter-spacing: 4px;
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.6);
+    background: linear-gradient(135deg, #ffffff 40%, var(--accent-cyan) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* Tagline */
+.splash-tagline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.8s ease;
+    font-family: var(--font-mono);
+    font-size: clamp(10px, 1.4vw, 15px);
+    letter-spacing: 3px;
+    color: var(--text-muted);
+}
+
+.splash-tagline.reveal {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.splash-tagline .tagline-bracket {
+    color: var(--accent-cyan);
+    font-weight: 700;
+}
+
+.splash-tagline .tagline-text {
+    color: var(--text-primary);
+    text-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+}
+
+/* System status indicator */
+.splash-system-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(0, 240, 255, 0.08);
+    border: 1px solid rgba(0, 240, 255, 0.25);
+    padding: 6px 16px;
+    border-radius: 4px;
+    margin-top: 10px;
+    opacity: 0;
+    transform: translateY(15px);
+    transition: all 0.8s ease;
+}
+
+.splash-system-status.reveal {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.splash-system-status .status-pulse {
+    width: 7px;
+    height: 7px;
+    background: var(--accent-emerald);
+    border-radius: 50%;
+    box-shadow: 0 0 10px var(--accent-emerald);
+    animation: statusPulse 1.2s infinite ease-in-out;
+}
+
+@keyframes statusPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(0.6); opacity: 0.3; }
+}
+
+.splash-system-status .status-lbl {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--accent-emerald);
+}
+
+/* Skip Intro Button */
+.splash-skip-btn {
+    position: absolute;
+    bottom: 36px;
+    right: 36px;
+    z-index: 10;
+    background: rgba(8, 16, 28, 0.7);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    letter-spacing: 1px;
+    backdrop-filter: blur(8px);
+    transition: all 0.2s ease;
+}
+
+.splash-skip-btn:hover {
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+    background: rgba(0, 240, 255, 0.15);
+    box-shadow: 0 0 15px var(--accent-cyan-glow);
+}
+

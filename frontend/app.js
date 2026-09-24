@@ -471,6 +471,260 @@ document.addEventListener('DOMContentLoaded', () => {
         return n.toString().padStart(2, '0');
     }
 
-    // Init
+    // =========================================================================
+    // CINEMATIC INTRO SPLASH CONTROLLER
+    // =========================================================================
+    function initIntroSplash() {
+        const splashScreen = document.getElementById('introSplashScreen');
+        const splashCanvas = document.getElementById('splashFormationCanvas');
+        const btnSkip = document.getElementById('btnSkipSplash');
+        if (!splashScreen || !splashCanvas) return;
+
+        const sCtx = splashCanvas.getContext('2d');
+        let animationFrameId = null;
+        let isDismissed = false;
+
+        function resizeCanvas() {
+            splashCanvas.width = window.innerWidth;
+            splashCanvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 4-4-2 Formation Node Coordinates (normalized 0 to 1 relative to viewport)
+        // Formation: 1 GK, 4 DEF, 4 MID, 2 ATT
+        const formationNodes = [
+            // GK (bottom center)
+            { id: 'GK', label: 'GK', nx: 0.50, ny: 0.88, radius: 12, color: '#bf40e0', glow: 'rgba(191, 64, 224, 0.8)' },
+            // 4 Defenders (LB, CB1, CB2, RB)
+            { id: 'LB', label: '3', nx: 0.22, ny: 0.70, radius: 10, color: '#00f0ff', glow: 'rgba(0, 240, 255, 0.8)' },
+            { id: 'CB1', label: '4', nx: 0.40, ny: 0.72, radius: 10, color: '#00f0ff', glow: 'rgba(0, 240, 255, 0.8)' },
+            { id: 'CB2', label: '5', nx: 0.60, ny: 0.72, radius: 10, color: '#00f0ff', glow: 'rgba(0, 240, 255, 0.8)' },
+            { id: 'RB', label: '2', nx: 0.78, ny: 0.70, radius: 10, color: '#00f0ff', glow: 'rgba(0, 240, 255, 0.8)' },
+            // 4 Midfielders (LM, CM1, CM2, RM)
+            { id: 'LM', label: '11', nx: 0.18, ny: 0.48, radius: 10, color: '#00e676', glow: 'rgba(0, 230, 118, 0.8)' },
+            { id: 'CM1', label: '8', nx: 0.38, ny: 0.50, radius: 11, color: '#00e676', glow: 'rgba(0, 230, 118, 0.8)' },
+            { id: 'CM2', label: '17', nx: 0.62, ny: 0.50, radius: 13, color: '#ffd700', glow: 'rgba(255, 215, 0, 0.9)', highlight: true }, // KDB position
+            { id: 'RM', label: '7', nx: 0.82, ny: 0.48, radius: 10, color: '#00e676', glow: 'rgba(0, 230, 118, 0.8)' },
+            // 2 Attackers (ST1, ST2)
+            { id: 'ST1', label: '9', nx: 0.38, ny: 0.26, radius: 11, color: '#ff6b35', glow: 'rgba(255, 107, 53, 0.8)' },
+            { id: 'ST2', label: '10', nx: 0.62, ny: 0.26, radius: 11, color: '#ff6b35', glow: 'rgba(255, 107, 53, 0.8)' }
+        ];
+
+        // Formation Connection Links (Tactical Passing Network)
+        const links = [
+            // GK to Def
+            [0, 1], [0, 2], [0, 3], [0, 4],
+            // Def line
+            [1, 2], [2, 3], [3, 4],
+            // Def to Mid
+            [1, 5], [2, 6], [3, 7], [4, 8],
+            [2, 7], [3, 6],
+            // Mid line
+            [5, 6], [6, 7], [7, 8],
+            // Mid to Attack
+            [5, 9], [6, 9], [7, 9], [7, 10], [8, 10], [6, 10],
+            // Attack line
+            [9, 10]
+        ];
+
+        // Shooting star passing particles traveling across formation links
+        const shootingStars = [];
+        for (let i = 0; i < 18; i++) {
+            const linkIdx = Math.floor(Math.random() * links.length);
+            shootingStars.push({
+                linkIdx: linkIdx,
+                progress: Math.random(),
+                speed: 0.006 + Math.random() * 0.012,
+                tailLength: 0.15 + Math.random() * 0.2,
+                color: Math.random() > 0.4 ? '#00f0ff' : '#00e676',
+                size: 2.5 + Math.random() * 2
+            });
+        }
+
+        // Formation appearance progress (0 to 1)
+        let formationAlpha = 0;
+        let formationTargetAlpha = 1;
+        const startTime = performance.now();
+
+        function renderFormation() {
+            if (isDismissed) return;
+            const elapsed = performance.now() - startTime;
+            const w = splashCanvas.width;
+            const h = splashCanvas.height;
+
+            sCtx.clearRect(0, 0, w, h);
+
+            // Gradually fade in formation
+            if (elapsed > 1200) {
+                formationAlpha = Math.min(1, formationAlpha + 0.025);
+            }
+
+            if (formationAlpha > 0) {
+                // 1. Draw connecting tactical formation laser lines
+                links.forEach(([fromIdx, toIdx]) => {
+                    const from = formationNodes[fromIdx];
+                    const to = formationNodes[toIdx];
+                    const x1 = from.nx * w;
+                    const y1 = from.ny * h;
+                    const x2 = to.nx * w;
+                    const y2 = to.ny * h;
+
+                    sCtx.beginPath();
+                    sCtx.moveTo(x1, y1);
+                    sCtx.lineTo(x2, y2);
+                    sCtx.strokeStyle = `rgba(0, 240, 255, ${0.18 * formationAlpha})`;
+                    sCtx.lineWidth = 1;
+                    sCtx.setLineDash([4, 6]);
+                    sCtx.stroke();
+                    sCtx.setLineDash([]);
+                });
+
+                // 2. Draw Shooting Star Particles traversing links
+                shootingStars.forEach(star => {
+                    star.progress += star.speed;
+                    if (star.progress > 1) {
+                        star.progress = 0;
+                        star.linkIdx = Math.floor(Math.random() * links.length);
+                    }
+
+                    const [fromIdx, toIdx] = links[star.linkIdx];
+                    const from = formationNodes[fromIdx];
+                    const to = formationNodes[toIdx];
+                    const x1 = from.nx * w;
+                    const y1 = from.ny * h;
+                    const x2 = to.nx * w;
+                    const y2 = to.ny * h;
+
+                    const curX = x1 + (x2 - x1) * star.progress;
+                    const curY = y1 + (y2 - y1) * star.progress;
+
+                    const tailP = Math.max(0, star.progress - star.tailLength);
+                    const tailX = x1 + (x2 - x1) * tailP;
+                    const tailY = y1 + (y2 - y1) * tailP;
+
+                    // Gradient beam tail
+                    const grad = sCtx.createLinearGradient(tailX, tailY, curX, curY);
+                    grad.addColorStop(0, 'rgba(0, 240, 255, 0)');
+                    grad.addColorStop(0.7, star.color);
+                    grad.addColorStop(1, '#ffffff');
+
+                    sCtx.beginPath();
+                    sCtx.moveTo(tailX, tailY);
+                    sCtx.lineTo(curX, curY);
+                    sCtx.strokeStyle = grad;
+                    sCtx.lineWidth = star.size;
+                    sCtx.stroke();
+
+                    // Star head glow
+                    sCtx.beginPath();
+                    sCtx.arc(curX, curY, star.size * 1.5, 0, Math.PI * 2);
+                    sCtx.fillStyle = '#ffffff';
+                    sCtx.shadowColor = star.color;
+                    sCtx.shadowBlur = 10;
+                    sCtx.fill();
+                    sCtx.shadowBlur = 0;
+                });
+
+                // 3. Draw Formation Player Position Nodes
+                formationNodes.forEach((node, idx) => {
+                    const x = node.nx * w;
+                    const y = node.ny * h;
+                    const pulse = Math.sin((elapsed / 300) + idx) * 2;
+
+                    // Outer tactical radar pulse circle
+                    sCtx.beginPath();
+                    sCtx.arc(x, y, node.radius + 6 + pulse, 0, Math.PI * 2);
+                    sCtx.strokeStyle = node.glow;
+                    sCtx.lineWidth = 1;
+                    sCtx.stroke();
+
+                    // Node core
+                    sCtx.beginPath();
+                    sCtx.arc(x, y, node.radius, 0, Math.PI * 2);
+                    sCtx.fillStyle = '#060d19';
+                    sCtx.fill();
+                    sCtx.lineWidth = 2;
+                    sCtx.strokeStyle = node.color;
+                    sCtx.shadowColor = node.color;
+                    sCtx.shadowBlur = node.highlight ? 16 : 8;
+                    sCtx.stroke();
+                    sCtx.shadowBlur = 0;
+
+                    // Jersey Number / Role
+                    sCtx.fillStyle = '#ffffff';
+                    sCtx.font = `600 ${node.radius > 11 ? 11 : 9}px "JetBrains Mono"`;
+                    sCtx.textAlign = 'center';
+                    sCtx.textBaseline = 'middle';
+                    sCtx.fillText(node.label, x, y);
+                });
+            }
+
+            animationFrameId = requestAnimationFrame(renderFormation);
+        }
+
+        renderFormation();
+
+        // Staggered Text Reveal Timeline:
+        // '4' -> '4' -> '2' -> 'ools' -> tagline -> system ready -> fade into app
+        const l41 = document.querySelector('.splash-brand-title .l-4-1');
+        const l42 = document.querySelector('.splash-brand-title .l-4-2');
+        const l2 = document.querySelector('.splash-brand-title .l-2');
+        const lOols = document.querySelector('.splash-brand-title .l-ools');
+        const tagline = document.querySelector('.splash-tagline');
+        const sysStatus = document.querySelector('.splash-system-status');
+
+        // Step 1: Reveal first '4' (0.3s)
+        setTimeout(() => { if (!isDismissed && l41) l41.classList.add('reveal'); }, 300);
+
+        // Step 2: Reveal second '4' (0.8s)
+        setTimeout(() => { if (!isDismissed && l42) l42.classList.add('reveal'); }, 850);
+
+        // Step 3: Reveal '2' (1.4s)
+        setTimeout(() => { if (!isDismissed && l2) l2.classList.add('reveal'); }, 1400);
+
+        // Step 4: Reveal 'ools' (2.0s)
+        setTimeout(() => { if (!isDismissed && lOols) lOols.classList.add('reveal'); }, 2000);
+
+        // Step 5: Reveal Tagline & System Status (2.6s)
+        setTimeout(() => {
+            if (!isDismissed) {
+                if (tagline) tagline.classList.add('reveal');
+                if (sysStatus) sysStatus.classList.add('reveal');
+            }
+        }, 2600);
+
+        // Step 6: Smoothly Fade into main app (4.6s)
+        const autoDismissTimer = setTimeout(() => {
+            dismissSplash();
+        }, 4600);
+
+        function dismissSplash() {
+            if (isDismissed) return;
+            isDismissed = true;
+            clearTimeout(autoDismissTimer);
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
+            splashScreen.classList.add('fade-out');
+            setTimeout(() => {
+                splashScreen.style.display = 'none';
+            }, 1200);
+        }
+
+        if (btnSkip) {
+            btnSkip.addEventListener('click', dismissSplash);
+        }
+
+        // Allow pressing Escape to skip intro instantly
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                dismissSplash();
+            }
+        });
+    }
+
+    // Init App & Splash Screen
     initSystem();
+    initIntroSplash();
 });
+
