@@ -702,8 +702,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }, STAGE2_TRIGGER);
 
-        // Stage 3: After showing stadium + horizontal dots for 2.5s, trigger pixelation & fade into homepage
-        const DISMISS_TRIGGER = STAGE2_TRIGGER + 2600;
+        // Stage 3: Keep the stadium showcase + horizontal dots loader visible for ~5.0s, then run crisp blue pixelation
+        const DISMISS_TRIGGER = STAGE2_TRIGGER + 5000;
         const autoDismissTimer = setTimeout(() => {
             runPixelationTransition();
         }, DISMISS_TRIGGER);
@@ -715,30 +715,69 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // Pixelate transition effect
+            // Crisp Monochromatic Blue Tactical Pixelation Dissolve
             pixelCanvas.classList.add('active');
-            let pixelSize = 4;
-            const maxPixelSize = 60;
             const w = pixelCanvas.width;
             const h = pixelCanvas.height;
 
-            const pixelInterval = setInterval(() => {
-                pixelSize += 6;
-                pCtx.fillStyle = '#030710';
-                for (let x = 0; x < w; x += pixelSize) {
-                    for (let y = 0; y < h; y += pixelSize) {
-                        if (Math.random() > 0.4) {
-                            pCtx.fillStyle = Math.random() > 0.5 ? '#00f0ff' : '#00e676';
-                            pCtx.globalAlpha = Math.random() * 0.4;
-                            pCtx.fillRect(x, y, pixelSize, pixelSize);
+            const gridBlockSize = Math.max(16, Math.floor(w / 48));
+            const cols = Math.ceil(w / gridBlockSize);
+            const rows = Math.ceil(h / gridBlockSize);
+
+            // Generate an ordered / randomized array of blocks
+            const blocks = [];
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    blocks.push({
+                        x: c * gridBlockSize,
+                        y: r * gridBlockSize,
+                        // Center-outward or wave delay
+                        delay: Math.hypot(c - cols / 2, r - rows / 2) * 18 + Math.random() * 200,
+                        alpha: 0,
+                        done: false
+                    });
+                }
+            }
+
+            const pStart = performance.now();
+
+            function animatePixelMosaic() {
+                if (isDismissed) return;
+                const elapsed = performance.now() - pStart;
+                let activeCount = 0;
+
+                pCtx.clearRect(0, 0, w, h);
+
+                blocks.forEach(b => {
+                    if (elapsed >= b.delay) {
+                        b.alpha = Math.min(1, b.alpha + 0.08);
+                        activeCount++;
+
+                        // Crisp monochromatic tech blues
+                        pCtx.fillStyle = '#061326';
+                        pCtx.fillRect(b.x, b.y, gridBlockSize, gridBlockSize);
+
+                        // Monochromatic electric cyan-blue border & shimmer
+                        pCtx.strokeStyle = `rgba(0, 240, 255, ${b.alpha * 0.75})`;
+                        pCtx.lineWidth = 1;
+                        pCtx.strokeRect(b.x + 0.5, b.y + 0.5, gridBlockSize - 1, gridBlockSize - 1);
+
+                        // Glowing cyber core in center of block
+                        if (b.alpha > 0.4) {
+                            pCtx.fillStyle = `rgba(0, 180, 255, ${b.alpha * 0.4})`;
+                            pCtx.fillRect(b.x + 3, b.y + 3, gridBlockSize - 6, gridBlockSize - 6);
                         }
                     }
-                }
-                if (pixelSize >= maxPixelSize) {
-                    clearInterval(pixelInterval);
+                });
+
+                if (activeCount >= blocks.length * 0.96 || elapsed > 1300) {
                     dismissSplash();
+                } else {
+                    requestAnimationFrame(animatePixelMosaic);
                 }
-            }, 60);
+            }
+
+            animatePixelMosaic();
         }
 
         function dismissSplash() {
@@ -750,7 +789,7 @@ document.addEventListener('DOMContentLoaded', () => {
             splashScreen.classList.add('fade-out');
             setTimeout(() => {
                 splashScreen.style.display = 'none';
-            }, 1000);
+            }, 900);
         }
 
         if (btnSkip) {
