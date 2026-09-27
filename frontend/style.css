@@ -676,7 +676,42 @@ body {
 
 .viewport-actions {
     display: flex;
+    align-items: center;
     gap: 8px;
+}
+
+.upload-trigger-btn {
+    background: rgba(0, 240, 255, 0.12) !important;
+    border-color: var(--accent-cyan) !important;
+    color: var(--accent-cyan) !important;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+}
+
+.upload-trigger-btn:hover {
+    background: var(--accent-cyan) !important;
+    color: #02060c !important;
+    box-shadow: 0 0 12px var(--accent-cyan-glow);
+}
+
+.header-clip-dropdown {
+    background: #081220;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    color: #ffffff;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    outline: none;
+    cursor: pointer;
+    max-width: 200px;
+}
+
+.header-clip-dropdown:focus {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 8px var(--accent-cyan-glow);
 }
 
 .pill-btn {

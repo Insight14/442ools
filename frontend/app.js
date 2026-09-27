@@ -147,8 +147,13 @@ document.addEventListener('DOMContentLoaded', () => {
             optNone.textContent = "None (Pixel space only)";
             selectHomography.appendChild(optNone);
 
-            // Render Preset Buttons
+            // Render Preset Buttons & Header Quick Select
             presetButtonsGroup.innerHTML = '';
+            const headerClipSelect = document.getElementById('headerQuickClipSelect');
+            if (headerClipSelect) {
+                headerClipSelect.innerHTML = `<option value="">Quick Select Clip...</option>`;
+            }
+            
             (data.sample_videos || []).forEach(sample => {
                 const btn = document.createElement('button');
                 btn.className = 'preset-btn';
@@ -158,7 +163,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     loadPresetClip(sample);
                 };
                 presetButtonsGroup.appendChild(btn);
+
+                if (headerClipSelect) {
+                    const opt = document.createElement('option');
+                    opt.value = sample.path;
+                    opt.textContent = sample.filename;
+                    headerClipSelect.appendChild(opt);
+                }
             });
+
+            if (headerClipSelect) {
+                headerClipSelect.onchange = (e) => {
+                    const selectedPath = e.target.value;
+                    if (selectedPath) {
+                        const found = (data.sample_videos || []).find(s => s.path === selectedPath);
+                        if (found) loadPresetClip(found);
+                    }
+                };
+            }
 
             drawEmptyPitch();
         } catch (err) {
