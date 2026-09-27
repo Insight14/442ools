@@ -47,6 +47,56 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnDownloadVideo = document.getElementById('btnDownloadVideo');
     const btnDownloadEvents = document.getElementById('btnDownloadEvents');
 
+    // Views & Nav Elements
+    const dashboardViewSection = document.getElementById('dashboardViewSection');
+    const studioWorkspaceSection = document.getElementById('studioWorkspaceSection');
+    const btnToggleDashboardView = document.getElementById('btnToggleDashboardView');
+    const viewSwitchText = document.getElementById('viewSwitchText');
+    const activeServiceTitle = document.getElementById('activeServiceTitle');
+    const navBtnDashboard = document.getElementById('navBtnDashboard');
+    const navBtnStudio = document.getElementById('navBtnStudio');
+
+    function switchView(viewName) {
+        if (viewName === 'studio') {
+            dashboardViewSection.style.display = 'none';
+            studioWorkspaceSection.style.display = 'grid';
+            viewSwitchText.textContent = "Back to Services Dashboard";
+            navBtnDashboard.classList.remove('active');
+            navBtnStudio.classList.add('active');
+        } else {
+            studioWorkspaceSection.style.display = 'none';
+            dashboardViewSection.style.display = 'block';
+            viewSwitchText.textContent = "Switch to Studio Workspace";
+            navBtnStudio.classList.remove('active');
+            navBtnDashboard.classList.add('active');
+        }
+    }
+
+    if (btnToggleDashboardView) {
+        btnToggleDashboardView.addEventListener('click', () => {
+            const isStudioVisible = studioWorkspaceSection.style.display === 'grid';
+            switchView(isStudioVisible ? 'dashboard' : 'studio');
+        });
+    }
+
+    if (navBtnDashboard) navBtnDashboard.addEventListener('click', () => switchView('dashboard'));
+    if (navBtnStudio) navBtnStudio.addEventListener('click', () => switchView('studio'));
+
+    // Global Service Selector Handler
+    window.openService = function(serviceKey) {
+        const titles = {
+            'football-tactics': 'MATCH PLAY INTELLIGENCE FEED // 442OOLS',
+            'football-1v1': '1v1 DRIBBLE & POSTURE ANALYSIS // FB-102',
+            'nfl': 'NFL ROUTE & POCKET TRACKING // NFL-301',
+            'nba': 'NBA COURT VISION & SHOT ARC // NBA-401',
+            'tennis': 'TENNIS COURT MOBILITY & RALLY TRACKING // TEN-501',
+            'table-tennis': 'TABLE TENNIS PADDLE & SPIN DYNAMICS // TT-601'
+        };
+
+        activeServiceTitle.textContent = titles[serviceKey] || 'OPTICAL TACTICAL FEED';
+        switchView('studio');
+    };
+
     // Canvas Context
     const ctx = pitchCanvas.getContext('2d');
 

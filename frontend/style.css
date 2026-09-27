@@ -92,6 +92,325 @@ body {
     background: rgba(0, 230, 118, 0.05);
 }
 
+/* ==========================================================================
+   APP CONTAINER & LEFT ICON NAVIGATION SIDEBAR (Canvas / UTD Style)
+   ========================================================================== */
+.app-container {
+    display: flex;
+    min-height: 100vh;
+    position: relative;
+    z-index: 10;
+}
+
+/* Left Icon Navigation Sidebar */
+.left-nav-sidebar {
+    width: 78px;
+    min-width: 78px;
+    background: #02060c;
+    border-right: 1px solid rgba(0, 240, 255, 0.15);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 0;
+    z-index: 50;
+}
+
+.nav-brand-logo {
+    margin-bottom: 24px;
+}
+
+.utd-crest {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #0b1f3a, #00f0ff);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--accent-cyan);
+    box-shadow: 0 0 14px var(--accent-cyan-glow);
+}
+
+.crest-text {
+    font-family: var(--font-heading);
+    font-size: 13px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: 1px;
+}
+
+.nav-icon-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+    align-items: center;
+}
+
+.nav-item {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    width: 60px;
+    padding: 8px 0;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.nav-item .nav-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nav-item .nav-label {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.nav-item:hover {
+    color: var(--accent-cyan);
+    background: rgba(0, 240, 255, 0.08);
+}
+
+.nav-item.active {
+    color: var(--accent-cyan);
+    background: rgba(0, 240, 255, 0.15);
+    box-shadow: 0 0 12px var(--accent-cyan-glow);
+}
+
+.nav-footer {
+    margin-top: auto;
+    padding-top: 16px;
+}
+
+.nav-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-emerald);
+    box-shadow: 0 0 8px var(--accent-emerald);
+}
+
+/* Main Content Body */
+.main-content-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    max-height: 100vh;
+}
+
+/* View Switch Button in Header */
+.view-switch-btn {
+    background: rgba(0, 240, 255, 0.1);
+    border: 1px solid var(--accent-cyan);
+    color: var(--accent-cyan);
+    font-family: var(--font-heading);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 7px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    letter-spacing: 1px;
+    transition: all 0.2s ease;
+}
+
+.view-switch-btn:hover {
+    background: var(--accent-cyan);
+    color: #02060c;
+    box-shadow: 0 0 15px var(--accent-cyan);
+}
+
+/* ==========================================================================
+   DASHBOARD HUB & SERVICE TILES (Canvas Grid Layout)
+   ========================================================================== */
+.dashboard-hub-section {
+    padding: 28px 36px;
+    max-width: 1400px;
+    width: 100%;
+}
+
+.dashboard-banner {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 28px;
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: 16px;
+}
+
+.dash-title {
+    font-family: var(--font-heading);
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: #ffffff;
+}
+
+.dash-subtitle {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin-top: 4px;
+}
+
+.dash-meta-badge {
+    background: rgba(0, 240, 255, 0.1);
+    border: 1px solid var(--accent-cyan);
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+}
+
+/* 6-Card Tile Grid */
+.service-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 24px;
+}
+
+.service-tile-card {
+    background: #081220;
+    border: 1px solid rgba(45, 80, 115, 0.45);
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.service-tile-card:hover {
+    transform: translateY(-4px);
+    border-color: var(--accent-cyan);
+    box-shadow: 0 12px 30px rgba(0, 240, 255, 0.25);
+}
+
+.service-tile-card.active-service {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 18px rgba(0, 240, 255, 0.3);
+}
+
+/* Card Top Colored Header Bars (Canvas style) */
+.tile-header-bar {
+    height: 120px;
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    position: relative;
+}
+
+.color-amber { background: linear-gradient(135deg, #a06800, #d9822b); }
+.color-crimson { background: linear-gradient(135deg, #b31d1d, #e53e3e); }
+.color-slate { background: linear-gradient(135deg, #2d3748, #4a5568); }
+.color-emerald { background: linear-gradient(135deg, #007a3d, #00b359); }
+.color-orange { background: linear-gradient(135deg, #c05621, #dd6b20); }
+.color-purple { background: linear-gradient(135deg, #5521b5, #805ad5); }
+
+.tile-badge-tag {
+    background: rgba(0, 0, 0, 0.55);
+    color: #ffffff;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 3px;
+    backdrop-filter: blur(4px);
+}
+
+.tile-more-btn {
+    color: #ffffff;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+/* Card Body */
+.tile-body {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    gap: 6px;
+}
+
+.tile-code-title {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.text-amber { color: #f6ad55; }
+.text-crimson { color: #fc8181; }
+.text-slate { color: #cbd5e0; }
+.text-emerald { color: #68d391; }
+.text-orange { color: #f6ad55; }
+.text-purple { color: #d6bcfa; }
+
+.tile-name {
+    font-family: var(--font-heading);
+    font-size: 16px;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.tile-term {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.tile-action-row {
+    margin-top: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 10px;
+}
+
+.action-icon-pill {
+    font-family: var(--font-heading);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    letter-spacing: 0.5px;
+}
+
+.action-icon-pill.launch-pill {
+    color: var(--accent-emerald);
+}
+
+.status-indicator-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.status-indicator-dot.online {
+    background: var(--accent-emerald);
+    box-shadow: 0 0 8px var(--accent-emerald);
+}
+
+.status-indicator-dot.idle {
+    background: #718096;
+}
+
 /* Tactical Top Navigation Header */
 .tactical-header {
     position: relative;

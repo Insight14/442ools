@@ -71,53 +71,236 @@
     <div class="glow-orb glow-orb-cyan"></div>
     <div class="glow-orb glow-orb-emerald"></div>
 
-    <header class="tactical-header">
-        <div class="header-left">
-            <div class="brand-crest">
-                <div class="crest-icon">
-                    <span class="crosshair-dot"></span>
-                    <span class="crest-ring"></span>
-                </div>
-                <div class="brand-text">
-                    <h1 class="brand-title">442<span>OOLS</span></h1>
-                    <span class="brand-subtitle">META-VISION // TACTICAL INTELLIGENCE LAB</span>
+    <!-- Main App Container: Left Sidebar + Main Viewport -->
+    <div class="app-container">
+        <!-- Left Icon Navigation Bar (Canvas / UTD Theme Style) -->
+        <aside class="left-nav-sidebar">
+            <div class="nav-brand-logo">
+                <div class="utd-crest">
+                    <span class="crest-text">442</span>
                 </div>
             </div>
-            <div class="system-badge">
-                <span class="pulse-indicator"></span>
-                <span class="badge-text" id="systemStatusText">CORE ONLINE // YOLOv8 CUSTOM READY</span>
+            <nav class="nav-icon-menu">
+                <button class="nav-item active" id="navBtnDashboard" title="Dashboard Hub">
+                    <div class="nav-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="7" height="7"/>
+                            <rect x="14" y="3" width="7" height="7"/>
+                            <rect x="14" y="14" width="7" height="7"/>
+                            <rect x="3" y="14" width="7" height="7"/>
+                        </svg>
+                    </div>
+                    <span class="nav-label">Dashboard</span>
+                </button>
+                <button class="nav-item" id="navBtnStudio" title="Tactical Studio">
+                    <div class="nav-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="5 3 19 12 5 21 5 3"/>
+                        </svg>
+                    </div>
+                    <span class="nav-label">Studio</span>
+                </button>
+                <button class="nav-item" id="navBtnAnalytics" title="Analytics Suite">
+                    <div class="nav-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="20" x2="18" y2="10"/>
+                            <line x1="12" y1="20" x2="12" y2="4"/>
+                            <line x1="6" y1="20" x2="6" y2="14"/>
+                        </svg>
+                    </div>
+                    <span class="nav-label">Analytics</span>
+                </button>
+                <button class="nav-item" id="navBtnHistory" title="Match History">
+                    <div class="nav-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                    </div>
+                    <span class="nav-label">History</span>
+                </button>
+                <button class="nav-item" id="navBtnHelp" title="Docs & Help">
+                    <div class="nav-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                    </div>
+                    <span class="nav-label">Help</span>
+                </button>
+            </nav>
+            <div class="nav-footer">
+                <div class="nav-status-dot" title="AI Engines Online"></div>
             </div>
-        </div>
-        <div class="header-right">
-            <div class="telemetry-pill">
-                <span class="label">FRAME RATE</span>
-                <span class="value" id="fpsDisplay">-- FPS</span>
-            </div>
-            <div class="telemetry-pill">
-                <span class="label">DETECTION CLASSES</span>
-                <span class="value highlight">PLAYERS • GK • REF • BALL</span>
-            </div>
-            <div class="telemetry-pill">
-                <span class="label">COORDINATES</span>
-                <span class="value" id="coordSystemDisplay">METRIC HOMOGRAPHY</span>
-            </div>
-        </div>
-    </header>
+        </aside>
 
-    <main class="studio-layout">
-        <section class="viewport-section">
-            <div class="panel-header glass-card">
-                <div class="panel-title-wrap">
-                    <span class="tech-bracket">[</span>
-                    <span class="panel-title">OPTICAL TACTICAL FEED</span>
-                    <span class="tech-bracket">]</span>
-                    <span class="session-tag" id="currentSessionTag">STANDBY // NO CLIP ACTIVE</span>
+        <!-- Right Content Body -->
+        <div class="main-content-body">
+            <!-- Top App Header -->
+            <header class="tactical-header">
+                <div class="header-left">
+                    <div class="brand-crest">
+                        <div class="crest-icon">
+                            <span class="crosshair-dot"></span>
+                            <span class="crest-ring"></span>
+                        </div>
+                        <div class="brand-text">
+                            <h1 class="brand-title">442<span>OOLS</span></h1>
+                            <span class="brand-subtitle">META-VISION // SPORTS VISION SUITE</span>
+                        </div>
+                    </div>
+                    <div class="system-badge">
+                        <span class="pulse-indicator"></span>
+                        <span class="badge-text" id="systemStatusText">CORE ONLINE // YOLOv8 READY</span>
+                    </div>
                 </div>
-                <div class="viewport-actions">
-                    <button class="pill-btn active" id="btnViewOutput">ANALYZED OVERLAY</button>
-                    <button class="pill-btn" id="btnViewRaw">RAW FOOTAGE</button>
+                <div class="header-right">
+                    <button class="view-switch-btn" id="btnToggleDashboardView">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="7" height="7"/>
+                            <rect x="14" y="3" width="7" height="7"/>
+                            <rect x="14" y="14" width="7" height="7"/>
+                            <rect x="3" y="14" width="7" height="7"/>
+                        </svg>
+                        <span id="viewSwitchText">Switch to Studio Workspace</span>
+                    </button>
                 </div>
-            </div>
+            </header>
+
+            <!-- VIEW 1: Service Hub Dashboard (Canvas / Tile Grid Layout) -->
+            <section id="dashboardViewSection" class="dashboard-hub-section">
+                <div class="dashboard-banner">
+                    <div class="banner-title-area">
+                        <h2 class="dash-title">Vision Services Dashboard</h2>
+                        <p class="dash-subtitle">Select a dedicated sports computer vision intelligence pipeline to initialize analysis</p>
+                    </div>
+                    <div class="dash-meta-badge">
+                        <span>6 ACTIVE SERVICES</span>
+                    </div>
+                </div>
+
+                <!-- Tile Cards Grid -->
+                <div class="service-cards-grid">
+                    <!-- Tile 1: Match Play Intelligence (Active / Ready) -->
+                    <div class="service-tile-card active-service" onclick="openService('football-tactics')">
+                        <div class="tile-header-bar color-amber">
+                            <div class="tile-badge-tag">READY // ONLINE</div>
+                            <div class="tile-more-btn">⋮</div>
+                        </div>
+                        <div class="tile-body">
+                            <div class="tile-code-title text-amber">FB-201 • Match Tactics</div>
+                            <div class="tile-name">Football Pass & Play Intelligence</div>
+                            <div class="tile-term">22-Player Tracking • Ref • GK • Homography</div>
+                            <div class="tile-action-row">
+                                <span class="action-icon-pill launch-pill">LAUNCH STUDIO →</span>
+                                <span class="status-indicator-dot online"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tile 2: 1v1 Dribble & Posture -->
+                    <div class="service-tile-card" onclick="openService('football-1v1')">
+                        <div class="tile-header-bar color-crimson">
+                            <div class="tile-badge-tag">PHASE 2 READY</div>
+                            <div class="tile-more-btn">⋮</div>
+                        </div>
+                        <div class="tile-body">
+                            <div class="tile-code-title text-crimson">FB-102 • 1v1 Dribbles</div>
+                            <div class="tile-name">Dribble Posture & Duel Analysis</div>
+                            <div class="tile-term">Close-Up 1v1 • Defender Stance • Feints</div>
+                            <div class="tile-action-row">
+                                <span class="action-icon-pill">SELECT PIPELINE</span>
+                                <span class="status-indicator-dot idle"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tile 3: NFL Analytics -->
+                    <div class="service-tile-card" onclick="openService('nfl')">
+                        <div class="tile-header-bar color-slate">
+                            <div class="tile-badge-tag">PHASE 2 READY</div>
+                            <div class="tile-more-btn">⋮</div>
+                        </div>
+                        <div class="tile-body">
+                            <div class="tile-code-title text-slate">NFL-301 • Gridiron Vision</div>
+                            <div class="tile-name">NFL Route & Pocket Tracking</div>
+                            <div class="tile-term">Route Trees • QB Pressure • Separation</div>
+                            <div class="tile-action-row">
+                                <span class="action-icon-pill">SELECT PIPELINE</span>
+                                <span class="status-indicator-dot idle"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tile 4: NBA Court Tracking -->
+                    <div class="service-tile-card" onclick="openService('nba')">
+                        <div class="tile-header-bar color-emerald">
+                            <div class="tile-badge-tag">PHASE 2 READY</div>
+                            <div class="tile-more-btn">⋮</div>
+                        </div>
+                        <div class="tile-body">
+                            <div class="tile-code-title text-emerald">NBA-401 • Court Vision</div>
+                            <div class="tile-name">NBA Shot Arc & Spacing</div>
+                            <div class="tile-term">Pick-and-Roll • Drive Angles • Release Arc</div>
+                            <div class="tile-action-row">
+                                <span class="action-icon-pill">SELECT PIPELINE</span>
+                                <span class="status-indicator-dot idle"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tile 5: Tennis Movement -->
+                    <div class="service-tile-card" onclick="openService('tennis')">
+                        <div class="tile-header-bar color-orange">
+                            <div class="tile-badge-tag">PHASE 2 READY</div>
+                            <div class="tile-more-btn">⋮</div>
+                        </div>
+                        <div class="tile-body">
+                            <div class="tile-code-title text-orange">TEN-501 • Court Mobility</div>
+                            <div class="tile-name">Tennis Footwork & Rally Tracking</div>
+                            <div class="tile-term">Baseline Splits • Swing Kinetic Chain</div>
+                            <div class="tile-action-row">
+                                <span class="action-icon-pill">SELECT PIPELINE</span>
+                                <span class="status-indicator-dot idle"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tile 6: Table Tennis Hand Movements -->
+                    <div class="service-tile-card" onclick="openService('table-tennis')">
+                        <div class="tile-header-bar color-purple">
+                            <div class="tile-badge-tag">PHASE 2 READY</div>
+                            <div class="tile-more-btn">⋮</div>
+                        </div>
+                        <div class="tile-body">
+                            <div class="tile-code-title text-purple">TT-601 • Micro Spin Vision</div>
+                            <div class="tile-name">Table Tennis Paddle & Spin Mechanics</div>
+                            <div class="tile-term">High-Speed Wrist Tracking • Spin Vector</div>
+                            <div class="tile-action-row">
+                                <span class="action-icon-pill">SELECT PIPELINE</span>
+                                <span class="status-indicator-dot idle"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW 2: Tactical Studio Workspace (Existing Active Pipeline) -->
+            <main id="studioWorkspaceSection" class="studio-layout" style="display: none;">
+                <section class="viewport-section">
+                    <div class="panel-header glass-card">
+                        <div class="panel-title-wrap">
+                            <span class="tech-bracket">[</span>
+                            <span class="panel-title" id="activeServiceTitle">MATCH PLAY INTELLIGENCE FEED</span>
+                            <span class="tech-bracket">]</span>
+                            <span class="session-tag" id="currentSessionTag">STANDBY // NO CLIP ACTIVE</span>
+                        </div>
+                        <div class="viewport-actions">
+                            <button class="pill-btn active" id="btnViewOutput">ANALYZED OVERLAY</button>
+                            <button class="pill-btn" id="btnViewRaw">RAW FOOTAGE</button>
+                        </div>
+                    </div>
 
             <div class="video-stage-container glass-card">
                 <div class="corner-hud top-left"></div>
@@ -306,6 +489,8 @@
             </div>
         </aside>
     </main>
+        </div><!-- /.main-content-body -->
+    </div><!-- /.app-container -->
 
     <script src="app.js"></script>
 </body>
