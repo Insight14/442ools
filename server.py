@@ -84,36 +84,44 @@ async def upload_video(file: UploadFile = File(...)):
         "size_mb": round(target_path.stat().st_size / (1024 * 1024), 2)
     }
 
-def run_analysis_task(job_id: str, video_rel_path: str, homography_rel_path: Optional[str], model_type: str, conf: float, attacking_dir: int):
+def run_analysis_task(job_id: str, video_rel_path: str, homography_rel_path: Optional[str], model_type: str, conf: float, attacking_dir: int, pipeline_type: str = "tactics"):
     job = analysis_jobs[job_id]
     job["status"] = "processing"
     job["logs"] = []
     
     input_file = BASE_DIR / video_rel_path
     base_name = input_file.stem
-    output_filename = f"{base_name}_meta_analyzed_{int(time.time())}.mp4"
+    output_filename = f"{base_name}_dribble_analyzed_{int(time.time())}.mp4" if pipeline_type == "dribble_pose" else f"{base_name}_meta_analyzed_{int(time.time())}.mp4"
     output_file = OUTPUT_DIR / output_filename
     events_filename = f"{base_name}_events_{int(time.time())}.jsonl"
     events_file = OUTPUT_DIR / events_filename
     
-    model_arg = str(WEIGHTS_PATH) if (model_type == "custom" and WEIGHTS_PATH.exists()) else str(COCO_WEIGHTS_PATH)
     python_bin = sys.executable
     
-    cmd = [
-        python_bin,
-        str(BASE_DIR / "src" / "detect_track.py"),
-        "--source", str(input_file),
-        "--output", str(output_file),
-        "--model", model_arg,
-        "--conf", str(conf),
-        "--attacking-direction", str(attacking_dir)
-    ]
-    
-    if homography_rel_path:
-        homo_full = BASE_DIR / homography_rel_path
-        if homo_full.exists():
-            cmd.extend(["--homography", str(homo_full)])
-            cmd.extend(["--events-output", str(events_file)])
+    if pipeline_type == "dribble_pose":
+        cmd = [
+            python_bin,
+            str(BASE_DIR / "src" / "dribble_pose_engine.py"),
+            "--video", str(input_file),
+            "--output", str(output_file)
+        ]
+    else:
+        model_arg = str(WEIGHTS_PATH) if (model_type == "custom" and WEIGHTS_PATH.exists()) else str(COCO_WEIGHTS_PATH)
+        cmd = [
+            python_bin,
+            str(BASE_DIR / "src" / "detect_track.py"),
+            "--source", str(input_file),
+            "--output", str(output_file),
+            "--model", model_arg,
+            "--conf", str(conf),
+            "--attacking-direction", str(attacking_dir)
+        ]
+        
+        if homography_rel_path:
+            homo_full = BASE_DIR / homography_rel_path
+            if homo_full.exists():
+                cmd.extend(["--homography", str(homo_full)])
+                cmd.extend(["--events-output", str(events_file)])
     
     job["logs"].append(f"[INIT] Executing: {' '.join(cmd)}")
     
@@ -165,7 +173,8 @@ async def start_analysis(
     homography_path: Optional[str] = Form(None),
     model_type: str = Form("custom"),
     conf: float = Form(0.35),
-    attacking_dir: int = Form(1)
+    attacking_dir: int = Form(1),
+    pipeline_type: str = Form("tactics")
 ):
     job_id = f"job_{int(time.time()*1000)}"
     analysis_jobs[job_id] = {
@@ -173,6 +182,7 @@ async def start_analysis(
         "status": "queued",
         "created_at": time.time(),
         "video_path": video_path,
+        "pipeline_type": pipeline_type,
         "logs": ["Job queued for Meta-Vision Analysis..."]
     }
     
@@ -183,7 +193,8 @@ async def start_analysis(
         homography_rel_path=homography_path if (homography_path and homography_path != "none") else None,
         model_type=model_type,
         conf=conf,
-        attacking_dir=attacking_dir
+        attacking_dir=attacking_dir,
+        pipeline_type=pipeline_type
     )
     
     return {"job_id": job_id, "status": "queued"}

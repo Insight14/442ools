@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
         systemStatus: null,
         homographies: [],
         activeViewMode: 'output', // 'output' or 'raw'
+        activeServiceKey: 'football-tactics',
     };
 
     // DOM Elements
@@ -84,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Global Service Selector Handler
     window.openService = function(serviceKey) {
+        state.activeServiceKey = serviceKey;
         const titles = {
             'football-tactics': 'MATCH PLAY INTELLIGENCE FEED // 442OOLS',
             'football-1v1': '1v1 DRIBBLE & POSTURE ANALYSIS // FB-102',
@@ -274,16 +276,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        const pipelineType = (state.activeServiceKey === 'football-1v1' || state.activeVideoPath.includes('dribble') || state.activeVideoPath.includes('1v1')) ? 'dribble_pose' : 'tactics';
+
         const formData = new FormData();
         formData.append('video_path', state.activeVideoPath);
         formData.append('homography_path', selectedHomo);
         formData.append('model_type', selectModel.value);
         formData.append('conf', sliderConf.value);
         formData.append('attacking_dir', selectAttackingDir.value);
+        formData.append('pipeline_type', pipelineType);
 
         analysisOverlay.style.display = 'flex';
         btnStartAnalysis.disabled = true;
-        terminalLogs.innerHTML = `<div class="log-line">[SYS] Initializing YOLOv8 inference & ByteTrack...</div>`;
+        terminalLogs.innerHTML = `<div class="log-line">[SYS] Initializing ${pipelineType === 'dribble_pose' ? '1v1 Dribble & Pose Engine' : 'YOLOv8 Tactical Analysis'}...</div>`;
 
         try {
             const res = await fetch('/api/analyze', {
