@@ -96,6 +96,18 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         activeServiceTitle.textContent = titles[serviceKey] || 'OPTICAL TACTICAL FEED';
+        
+        // Auto-select first relevant sample if available
+        if (state.systemStatus && state.systemStatus.sample_videos) {
+            if (serviceKey === 'football-1v1') {
+                const dribbleSample = state.systemStatus.sample_videos.find(s => s.filename.includes('nicowill') || s.filename.includes('doku') || s.filename.includes('diaz'));
+                if (dribbleSample) loadPresetClip(dribbleSample);
+            } else if (serviceKey === 'football-tactics') {
+                const matchSample = state.systemStatus.sample_videos.find(s => s.filename.includes('spain') || s.filename.includes('kdb') || s.filename.includes('olise'));
+                if (matchSample) loadPresetClip(matchSample);
+            }
+        }
+        
         switchView('studio');
     };
 
