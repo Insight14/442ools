@@ -130,27 +130,40 @@ def draw_prediction_panel(frame, prediction, player_pixels):
     cv2.putText(canvas, f"POSSESSION  {possession_text}", (panel_x + 22, 188), cv2.FONT_HERSHEY_SIMPLEX, 0.47, white, 1, cv2.LINE_AA)
     cv2.putText(canvas, f"DATA QUALITY  {quality}", (panel_x + 22, 214), cv2.FONT_HERSHEY_SIMPLEX, 0.47, green if quality == "USABLE" else orange, 1, cv2.LINE_AA)
 
-    cv2.putText(canvas, "NEXT ACTIONS", (panel_x + 22, 264), cv2.FONT_HERSHEY_SIMPLEX, 0.48, cyan, 1, cv2.LINE_AA)
+    cv2.putText(canvas, "OPTIMAL TACTICAL ACTION", (panel_x + 22, 264), cv2.FONT_HERSHEY_SIMPLEX, 0.48, cyan, 1, cv2.LINE_AA)
     suggestions = prediction.get("suggestions", [])
     if not suggestions:
-        cv2.putText(canvas, "No confident action", (panel_x + 22, 300), cv2.FONT_HERSHEY_SIMPLEX, 0.55, muted, 1, cv2.LINE_AA)
-    for index, suggestion in enumerate(suggestions[:4]):
-        y = 304 + index * 60
-        kind = suggestion["type"].upper()
-        confidence = int(round(suggestion.get("confidence", 0) * 100))
+        cv2.putText(canvas, "Scanning passing lanes...", (panel_x + 22, 300), cv2.FONT_HERSHEY_SIMPLEX, 0.50, muted, 1, cv2.LINE_AA)
+    else:
+        best = suggestions[0]
+        kind = best["type"].upper()
+        confidence = int(round(best.get("confidence", 0) * 100))
+        xt_val = best.get("expected_threat", 0.0)
+        
+        cv2.putText(canvas, f"{kind}  ({confidence}% MATCH)", (panel_x + 22, 300), cv2.FONT_HERSHEY_SIMPLEX, 0.65, white, 2, cv2.LINE_AA)
+        
         if kind == "PASS":
-            detail = f"#{suggestion['from_track_id']}  ->  #{suggestion['to_track_id']}"
+            detail = f"#{best['from_track_id']} -> #{best['to_track_id']} ({best.get('distance_m', 0)}m)"
+            subdetail = f"xT: +{xt_val} | Opp. Sep: {best.get('nearest_opponent_m', 0)}m"
         else:
-            detail = f"TRACK #{suggestion.get('from_track_id', '?')}  /  {kind}"
-        cv2.putText(canvas, f"{kind}  {confidence}%", (panel_x + 22, y), cv2.FONT_HERSHEY_SIMPLEX, 0.62, white, 2, cv2.LINE_AA)
-        cv2.putText(canvas, detail, (panel_x + 22, y + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.48, muted, 1, cv2.LINE_AA)
+            detail = f"TRACK #{best.get('from_track_id', '?')} ({best.get('goal_distance_m', 0)}m)"
+            subdetail = f"xG: {xt_val} | Goal Threat"
+
+        cv2.putText(canvas, detail, (panel_x + 22, 328), cv2.FONT_HERSHEY_SIMPLEX, 0.52, cyan, 1, cv2.LINE_AA)
+        cv2.putText(canvas, subdetail, (panel_x + 22, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.44, muted, 1, cv2.LINE_AA)
+        
+        desc = best.get("desc", "")
+        if desc:
+            cv2.putText(canvas, desc[:32], (panel_x + 22, 380), cv2.FONT_HERSHEY_SIMPLEX, 0.42, green, 1, cv2.LINE_AA)
+            if len(desc) > 32:
+                cv2.putText(canvas, desc[32:64], (panel_x + 22, 400), cv2.FONT_HERSHEY_SIMPLEX, 0.42, green, 1, cv2.LINE_AA)
 
     for event in prediction.get("events", [])[:2]:
         y = 570
         cv2.putText(canvas, f"EVENT  {event['type'].replace('_', ' ').upper()}", (panel_x + 22, y), cv2.FONT_HERSHEY_SIMPLEX, 0.46, cyan, 1, cv2.LINE_AA)
         cv2.putText(canvas, f"confidence {int(event.get('confidence', 0) * 100)}%", (panel_x + 22, y + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.44, muted, 1, cv2.LINE_AA)
 
-    for suggestion in suggestions[:4]:
+    for suggestion in suggestions[:1]:
         if suggestion["type"] != "pass":
             continue
         source = player_pixels.get(suggestion.get("from_track_id"))
