@@ -305,22 +305,78 @@ body {
     box-shadow: 0 0 18px rgba(0, 240, 255, 0.3);
 }
 
-/* Card Top Colored Header Bars (Canvas style) */
+/* Card Top Image Header Bars with Color Tints & Focal Framing */
 .tile-header-bar {
-    height: 120px;
+    height: 155px;
     padding: 12px 16px;
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
     position: relative;
+    background-size: cover !important;
+    background-repeat: no-repeat !important;
+    transition: transform 0.3s ease, filter 0.3s ease;
+    overflow: hidden;
 }
 
-.color-amber { background: linear-gradient(135deg, #a06800, #d9822b); }
-.color-crimson { background: linear-gradient(135deg, #b31d1d, #e53e3e); }
-.color-slate { background: linear-gradient(135deg, #2d3748, #4a5568); }
-.color-emerald { background: linear-gradient(135deg, #007a3d, #00b359); }
-.color-orange { background: linear-gradient(135deg, #c05621, #dd6b20); }
-.color-purple { background: linear-gradient(135deg, #5521b5, #805ad5); }
+.tile-header-bar::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 40px;
+    background: linear-gradient(to top, #081220, transparent);
+    pointer-events: none;
+}
+
+/* Card 1: Football Match Tactics (Managers - Klopp, Mourinho, Pep, Ferguson, Ancelotti heads visible) */
+.color-amber { 
+    background: linear-gradient(180deg, rgba(217, 130, 43, 0.45) 0%, rgba(8, 18, 32, 0.75) 100%),
+                url('assets/card_managers.jpg');
+    background-position: center 12% !important;
+}
+
+/* Card 2: 1v1 Dribbles (Ronaldinho - Upper body & Dribbling stance visible) */
+.color-crimson { 
+    background: linear-gradient(180deg, rgba(229, 62, 62, 0.42) 0%, rgba(8, 18, 32, 0.75) 100%),
+                url('assets/card_ronaldinho.jpg');
+    background-position: center 8% !important;
+}
+
+/* Card 3: NFL Analytics (NFL Shield centered and sharp) */
+.color-slate { 
+    background: linear-gradient(180deg, rgba(43, 76, 126, 0.5) 0%, rgba(8, 18, 32, 0.78) 100%),
+                url('assets/card_nfl.png');
+    background-position: center 50% !important;
+    background-size: contain !important;
+    background-color: #0b1a30;
+}
+
+/* Card 4: NBA Court Tracking (LeBron shooting form & ball high point) */
+.color-emerald { 
+    background: linear-gradient(180deg, rgba(0, 179, 89, 0.42) 0%, rgba(8, 18, 32, 0.78) 100%),
+                url('assets/card_lebron.png');
+    background-position: center 15% !important;
+}
+
+/* Card 5: Tennis Court Mobility (Athlete serve / court swing action) */
+.color-orange { 
+    background: linear-gradient(180deg, rgba(221, 107, 32, 0.42) 0%, rgba(8, 18, 32, 0.78) 100%),
+                url('assets/card_tennis.jpg');
+    background-position: center 25% !important;
+}
+
+/* Card 6: Table Tennis Spin (Player posture & paddle table action) */
+.color-purple { 
+    background: linear-gradient(180deg, rgba(128, 90, 213, 0.45) 0%, rgba(8, 18, 32, 0.78) 100%),
+                url('assets/card_tabletennis.png');
+    background-position: center 30% !important;
+}
+
+.service-tile-card:hover .tile-header-bar {
+    filter: brightness(1.1) contrast(1.05);
+}
 
 .tile-badge-tag {
     background: rgba(0, 0, 0, 0.55);
