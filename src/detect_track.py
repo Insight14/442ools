@@ -86,94 +86,150 @@ def draw_tech_marker(frame, center, axes, color):
 
 
 def draw_glowing_ball(frame, center, radius, trail):
-    """Draw a bright ball core with a short fading motion trail."""
-    glow_color = (40, 150, 255)  # warm orange in BGR
-    glow_layer = np.zeros_like(frame)
-    for index, point in enumerate(trail):
-        age_ratio = (index + 1) / max(1, len(trail))
-        point_radius = max(2, int(radius * (0.45 + age_ratio * 0.35)))
-        cv2.circle(glow_layer, (int(point[0]), int(point[1])), point_radius, glow_color, -1, cv2.LINE_AA)
-    glow_layer = cv2.GaussianBlur(glow_layer, (0, 0), sigmaX=max(3.0, radius * 1.8))
-    cv2.addWeighted(glow_layer, 0.28, frame, 0.72, 0, frame)
+    """Draw a vibrant glowing ball core with an organic tapered fluid comet motion trail."""
+    if not trail:
+        ball_center = (int(center[0]), int(center[1]))
+        cv2.circle(frame, ball_center, max(3, radius), (255, 255, 255), -1, cv2.LINE_AA)
+        return
 
-    for start, end in zip(trail, list(trail)[1:]):
-        cv2.line(frame, (int(start[0]), int(start[1])), (int(end[0]), int(end[1])), glow_color, max(1, radius // 2), cv2.LINE_AA)
+    trail_list = list(trail)
+    n_points = len(trail_list)
+    glow_color_bgr = (40, 160, 255)  # warm electric orange-cyan halo
+
+    # 1. Multi-pass smooth organic tapered trail
+    if n_points >= 2:
+        overlay = np.zeros_like(frame)
+        for i in range(n_points - 1):
+            p1 = trail_list[i]
+            p2 = trail_list[i + 1]
+            t = (i + 1) / float(n_points)  # 0 at oldest, 1 at ball head
+            
+            # Organic non-linear teardrop taper: starts ultra-thin, blossoms into rounded head
+            thickness = max(1, int((t ** 1.8) * radius * 1.5))
+            alpha_step = max(0.08, min(0.85, t ** 1.4))
+
+            # Outer soft glow line
+            cv2.line(overlay, (int(p1[0]), int(p1[1])), (int(p2[0]), int(p2[1])), glow_color_bgr, thickness + 4, cv2.LINE_AA)
+            # Inner bright filament
+            cv2.line(overlay, (int(p1[0]), int(p1[1])), (int(p2[0]), int(p2[1])), (255, 255, 255), max(1, thickness // 2), cv2.LINE_AA)
+
+        # Soft Gaussian blur on the trail layer for natural luminescence
+        blurred_trail = cv2.GaussianBlur(overlay, (0, 0), sigmaX=max(2.0, radius * 1.2))
+        cv2.addWeighted(blurred_trail, 0.45, frame, 0.55, 0, frame)
+
+    # 2. Ball Core with pristine multi-ring neon halo
     ball_center = (int(center[0]), int(center[1]))
-    cv2.circle(frame, ball_center, max(3, radius + 2), (255, 255, 255), 1, cv2.LINE_AA)
-    cv2.circle(frame, ball_center, max(2, radius), (230, 245, 255), -1, cv2.LINE_AA)
+    cv2.circle(frame, ball_center, max(4, radius + 3), glow_color_bgr, 1, cv2.LINE_AA)
+    cv2.circle(frame, ball_center, max(2, radius), (240, 250, 255), -1, cv2.LINE_AA)
     cv2.circle(frame, ball_center, max(1, radius // 2), (255, 255, 255), -1, cv2.LINE_AA)
+
+
+def draw_tactical_vector(canvas, start_pt, end_pt, color_bgr, alpha=0.9, is_shot=False, label=""):
+    """Draw an ultra-thin, sleek tactical trajectory with an ethereal light glow."""
+    x1, y1 = int(start_pt[0]), int(start_pt[1])
+    x2, y2 = int(end_pt[0]), int(end_pt[1])
+
+    # Create temporary overlay for high-precision transparency blending
+    glow_canvas = canvas.copy()
+
+    # Outer ethereal glow layer (soft thin halo)
+    cv2.line(glow_canvas, (x1, y1), (x2, y2), color_bgr, 5 if not is_shot else 6, cv2.LINE_AA)
+    # Inner crisp precision vector
+    cv2.line(glow_canvas, (x1, y1), (x2, y2), (255, 255, 255), 1, cv2.LINE_AA)
+    # Target reticle ring
+    cv2.circle(glow_canvas, (x2, y2), 6, color_bgr, 2, cv2.LINE_AA)
+    cv2.circle(glow_canvas, (x2, y2), 2, (255, 255, 255), -1, cv2.LINE_AA)
+
+    # Blend with exact specified opacity
+    cv2.addWeighted(glow_canvas, alpha, canvas, 1.0 - alpha, 0, canvas)
 
 
 def draw_prediction_panel(frame, prediction, player_pixels):
     """Add a tactical sidebar and projected pass/shot suggestion paths."""
     panel = np.zeros((frame.shape[0], PREDICTION_PANEL_WIDTH, 3), dtype=np.uint8)
-    panel[:] = (12, 20, 31)
+    panel[:] = (8, 16, 26)
     canvas = np.concatenate([frame, panel], axis=1)
     panel_x = frame.shape[1]
     cyan = (255, 210, 80)
-    white = (235, 242, 248)
-    muted = (145, 165, 180)
-    orange = (70, 150, 255)
-    green = (100, 220, 130)
+    white = (240, 248, 255)
+    muted = (135, 155, 175)
+    green = (80, 230, 110)
+    faded_yellow = (70, 210, 240)
+    electric_blue = (255, 160, 40)
 
-    cv2.line(canvas, (panel_x, 0), (panel_x, canvas.shape[0]), (45, 75, 95), 2)
-    cv2.putText(canvas, "LIVE PLAY INTELLIGENCE", (panel_x + 22, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.72, cyan, 2, cv2.LINE_AA)
-    cv2.putText(canvas, "442OOLS / TACTICAL FEED", (panel_x + 22, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.42, muted, 1, cv2.LINE_AA)
-    cv2.line(canvas, (panel_x + 22, 88), (panel_x + PREDICTION_PANEL_WIDTH - 22, 88), (45, 75, 95), 1)
+    cv2.line(canvas, (panel_x, 0), (panel_x, canvas.shape[0]), (35, 65, 85), 2)
+    cv2.putText(canvas, "LIVE TACTICAL INTELLIGENCE", (panel_x + 22, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.65, cyan, 2, cv2.LINE_AA)
+    cv2.putText(canvas, "442OOLS / META-VISION", (panel_x + 22, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.42, muted, 1, cv2.LINE_AA)
+    cv2.line(canvas, (panel_x + 22, 88), (panel_x + PREDICTION_PANEL_WIDTH - 22, 88), (35, 65, 85), 1)
 
-    play = prediction.get("play", "unknown").replace("_", " ").upper()
+    play = prediction.get("play_label", "unknown").replace("_", " ").upper()
     quality = prediction.get("data_quality", "unknown").replace("_", " ").upper()
     possession = prediction.get("possession_track_id")
     possession_text = f"TRACK #{possession}" if possession is not None else "UNCONFIRMED"
-    cv2.putText(canvas, "CURRENT PLAY", (panel_x + 22, 126), cv2.FONT_HERSHEY_SIMPLEX, 0.42, muted, 1, cv2.LINE_AA)
-    cv2.putText(canvas, play, (panel_x + 22, 158), cv2.FONT_HERSHEY_SIMPLEX, 0.9, white if quality == "USABLE" else orange, 2, cv2.LINE_AA)
-    cv2.putText(canvas, f"POSSESSION  {possession_text}", (panel_x + 22, 188), cv2.FONT_HERSHEY_SIMPLEX, 0.47, white, 1, cv2.LINE_AA)
-    cv2.putText(canvas, f"DATA QUALITY  {quality}", (panel_x + 22, 214), cv2.FONT_HERSHEY_SIMPLEX, 0.47, green if quality == "USABLE" else orange, 1, cv2.LINE_AA)
+    
+    cv2.putText(canvas, "TACTICAL PHASE", (panel_x + 22, 122), cv2.FONT_HERSHEY_SIMPLEX, 0.40, muted, 1, cv2.LINE_AA)
+    cv2.putText(canvas, play, (panel_x + 22, 152), cv2.FONT_HERSHEY_SIMPLEX, 0.82, white if quality == "USABLE" else (70, 150, 255), 2, cv2.LINE_AA)
+    cv2.putText(canvas, f"POSSESSION  {possession_text}", (panel_x + 22, 182), cv2.FONT_HERSHEY_SIMPLEX, 0.46, white, 1, cv2.LINE_AA)
 
-    cv2.putText(canvas, "OPTIMAL TACTICAL ACTION", (panel_x + 22, 264), cv2.FONT_HERSHEY_SIMPLEX, 0.48, cyan, 1, cv2.LINE_AA)
     suggestions = prediction.get("suggestions", [])
+    
+    # Render Overlay Trajectory Lines on Pitch
+    for sugg in suggestions:
+        s_type = sugg.get("type")
+        from_id = sugg.get("from_track_id")
+        source = player_pixels.get(from_id)
+        if source is None:
+            continue
+
+        if s_type == "pass":
+            tier = sugg.get("tier", "primary")
+            target = player_pixels.get(sugg.get("to_track_id"))
+            if target is None:
+                continue
+
+            if tier == "primary":
+                # Primary Best Pass: Crisp Neon Emerald Green
+                draw_tactical_vector(canvas, source, target, color_bgr=(60, 235, 100), alpha=0.92, label="BEST PASS")
+            else:
+                # Backup Viable Pass: Faded Subtle Golden-Yellow
+                draw_tactical_vector(canvas, source, target, color_bgr=(50, 200, 230), alpha=0.38, label="BACKUP")
+
+        elif s_type == "shot":
+            # Shot Opportunity: Ethereal Electric Blue with opacity based on goal probability / xG
+            xg = sugg.get("score", 0.3)
+            shot_alpha = float(clamp(0.40 + xg * 0.85, 0.40, 0.95))
+            # Direct towards goal post direction
+            goal_x = int(canvas.shape[1] - PREDICTION_PANEL_WIDTH - 20) if source[0] > 100 else 20
+            goal_pt = (goal_x, int(canvas.shape[0] * 0.5))
+            draw_tactical_vector(canvas, source, goal_pt, color_bgr=(255, 160, 40), alpha=shot_alpha, is_shot=True, label="SHOT")
+
+    # Render Sidebar Suggestion Cards
+    cv2.putText(canvas, "RECOMMENDED PLAYS", (panel_x + 22, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.48, cyan, 1, cv2.LINE_AA)
     if not suggestions:
-        cv2.putText(canvas, "Scanning passing lanes...", (panel_x + 22, 300), cv2.FONT_HERSHEY_SIMPLEX, 0.50, muted, 1, cv2.LINE_AA)
+        cv2.putText(canvas, "Scanning passing options...", (panel_x + 22, 268), cv2.FONT_HERSHEY_SIMPLEX, 0.48, muted, 1, cv2.LINE_AA)
     else:
-        best = suggestions[0]
-        kind = best["type"].upper()
-        confidence = int(round(best.get("confidence", 0) * 100))
-        xt_val = best.get("expected_threat", 0.0)
-        
-        cv2.putText(canvas, f"{kind}  ({confidence}% MATCH)", (panel_x + 22, 300), cv2.FONT_HERSHEY_SIMPLEX, 0.65, white, 2, cv2.LINE_AA)
-        
-        if kind == "PASS":
-            detail = f"#{best['from_track_id']} -> #{best['to_track_id']} ({best.get('distance_m', 0)}m)"
-            subdetail = f"xT: +{xt_val} | Opp. Sep: {best.get('nearest_opponent_m', 0)}m"
-        else:
-            detail = f"TRACK #{best.get('from_track_id', '?')} ({best.get('goal_distance_m', 0)}m)"
-            subdetail = f"xG: {xt_val} | Goal Threat"
+        y_offset = 265
+        for s in suggestions[:3]:
+            s_type = s.get("type", "").upper()
+            tier = s.get("tier", "")
+            
+            if s_type == "PASS" and tier == "primary":
+                title_col = green
+                tag = "[#1 BEST PASS]"
+            elif s_type == "PASS":
+                title_col = faded_yellow
+                tag = "[BACKUP PASS]"
+            else:
+                title_col = electric_blue
+                tag = f"[SHOT THREAT ({int(s.get('score', 0)*100)}% xG)]"
 
-        cv2.putText(canvas, detail, (panel_x + 22, 328), cv2.FONT_HERSHEY_SIMPLEX, 0.52, cyan, 1, cv2.LINE_AA)
-        cv2.putText(canvas, subdetail, (panel_x + 22, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.44, muted, 1, cv2.LINE_AA)
-        
-        desc = best.get("desc", "")
-        if desc:
-            cv2.putText(canvas, desc[:32], (panel_x + 22, 380), cv2.FONT_HERSHEY_SIMPLEX, 0.42, green, 1, cv2.LINE_AA)
-            if len(desc) > 32:
-                cv2.putText(canvas, desc[32:64], (panel_x + 22, 400), cv2.FONT_HERSHEY_SIMPLEX, 0.42, green, 1, cv2.LINE_AA)
-
-    for event in prediction.get("events", [])[:2]:
-        y = 570
-        cv2.putText(canvas, f"EVENT  {event['type'].replace('_', ' ').upper()}", (panel_x + 22, y), cv2.FONT_HERSHEY_SIMPLEX, 0.46, cyan, 1, cv2.LINE_AA)
-        cv2.putText(canvas, f"confidence {int(event.get('confidence', 0) * 100)}%", (panel_x + 22, y + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.44, muted, 1, cv2.LINE_AA)
-
-    for suggestion in suggestions[:1]:
-        if suggestion["type"] != "pass":
-            continue
-        source = player_pixels.get(suggestion.get("from_track_id"))
-        target = player_pixels.get(suggestion.get("to_track_id"))
-        if source is None or target is None:
-            continue
-        start = (int(source[0]), int(source[1]))
-        end = (int(target[0]), int(target[1]))
-        cv2.line(canvas, start, end, (60, 190, 255), 3, cv2.LINE_AA)
-        cv2.circle(canvas, end, 7, (60, 190, 255), -1, cv2.LINE_AA)
+            cv2.putText(canvas, f"{tag}  #{s.get('from_track_id','?')} -> #{s.get('to_track_id','GOAL')}", (panel_x + 22, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.52, title_col, 2, cv2.LINE_AA)
+            cv2.putText(canvas, f"xT: +{s.get('expected_threat', 0)}  |  Dist: {s.get('distance_m', s.get('goal_distance_m', 0))}m", (panel_x + 22, y_offset + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.42, white, 1, cv2.LINE_AA)
+            
+            desc = s.get("desc", "")
+            if desc:
+                cv2.putText(canvas, desc[:34], (panel_x + 22, y_offset + 42), cv2.FONT_HERSHEY_SIMPLEX, 0.40, muted, 1, cv2.LINE_AA)
+            y_offset += 72
 
     return canvas
 

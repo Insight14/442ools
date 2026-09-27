@@ -450,14 +450,67 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
+        // Render Tactical Suggestion Vectors on 2D Pitch Radar
+        const suggestions = event.suggestions || [];
+        suggestions.forEach(sugg => {
+            const sType = sugg.type;
+            const fromP = players.find(p => p.track_id === sugg.from_track_id);
+            if (!fromP || !fromP.position) return;
+            const startPt = toCanvas(fromP.position[0], fromP.position[1]);
+
+            if (sType === 'pass') {
+                const toP = players.find(p => p.track_id === sugg.to_track_id);
+                if (!toP || !toP.position) return;
+                const endPt = toCanvas(toP.position[0], toP.position[1]);
+                const isPrimary = sugg.tier === 'primary';
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(startPt.cx, startPt.cy);
+                ctx.lineTo(endPt.cx, endPt.cy);
+
+                if (isPrimary) {
+                    // #1 Best Pass: Glowing Neon Emerald Green
+                    ctx.strokeStyle = '#00e676';
+                    ctx.lineWidth = 2.0;
+                    ctx.shadowColor = '#00e676';
+                    ctx.shadowBlur = 8;
+                    ctx.stroke();
+                } else {
+                    // Backup Viable Pass: Faded Subtle Golden-Yellow
+                    ctx.strokeStyle = 'rgba(255, 215, 0, 0.40)';
+                    ctx.lineWidth = 1.2;
+                    ctx.setLineDash([3, 4]);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            } else if (sType === 'shot') {
+                // Shot Opportunity: Electric Blue with opacity based on goal probability / xG
+                const xg = sugg.score || 0.35;
+                const shotAlpha = Math.min(0.95, Math.max(0.40, 0.35 + xg * 0.85));
+                const goalPt = toCanvas(105.0, 34.0);
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(startPt.cx, startPt.cy);
+                ctx.lineTo(goalPt.cx, goalPt.cy);
+                ctx.strokeStyle = `rgba(0, 240, 255, ${shotAlpha})`;
+                ctx.lineWidth = 2.2;
+                ctx.shadowColor = '#00f0ff';
+                ctx.shadowBlur = 10;
+                ctx.stroke();
+                ctx.restore();
+            }
+        });
+
         // Ball
         if (event.ball_position) {
             const bpt = toCanvas(event.ball_position[0], event.ball_position[1]);
             ctx.beginPath();
-            ctx.arc(bpt.cx, bpt.cy, 3, 0, Math.PI * 2);
+            ctx.arc(bpt.cx, bpt.cy, 3.5, 0, Math.PI * 2);
             ctx.fillStyle = '#ffffff';
             ctx.shadowColor = '#00f0ff';
-            ctx.shadowBlur = 6;
+            ctx.shadowBlur = 8;
             ctx.fill();
             ctx.shadowBlur = 0;
         }

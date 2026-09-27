@@ -226,21 +226,26 @@ class PlayPredictor:
             min_opp_dist = min((distance(owner.position, opp.position) for opp in opponents), default=15.0)
             carrier_pressure = "high" if min_opp_dist < 2.5 else ("medium" if min_opp_dist < 5.0 else "low")
 
-            pass_candidates = self._evaluate_pass_options(owner, players)
+            pass_candidates = self._evaluate_pass_options(owner, players) or []
             shot_option = self._evaluate_shot_option(owner, players)
 
-            # Manager Decision Hierarchy: Pick the #1 SINGLE BEST PLAY
-            best_play = None
-            if shot_option and shot_option["score"] >= 0.38:
-                # If clear goalscoring shot opportunity beats passing risk, suggest shot
-                if not pass_candidates or shot_option["score"] > pass_candidates[0]["score"] * 0.7:
-                    best_play = shot_option
-            
-            if not best_play and pass_candidates:
-                best_play = pass_candidates[0]
+            # 1. Shot Opportunity Check
+            if shot_option:
+                suggestions.append(shot_option)
 
-            if best_play:
-                suggestions.append(best_play)
+            # 2. Best Pass (Green) & High-Quality Backup Passes (Faded Yellow)
+            if pass_candidates:
+                # Top 1 Best Pass (Green)
+                best_pass = pass_candidates[0]
+                best_pass["tier"] = "primary"
+                suggestions.append(best_pass)
+
+                # Only top viable secondary passes (score >= 0.65 or within 15% of best)
+                for backup in pass_candidates[1:3]:
+                    if backup["score"] >= 0.62 and backup["score"] >= best_pass["score"] * 0.78:
+                        backup_copy = dict(backup)
+                        backup_copy["tier"] = "backup"
+                        suggestions.append(backup_copy)
 
         # Detect Completed Passes
         if owner and self.previous_possession and owner.track_id != self.previous_possession["track_id"]:
