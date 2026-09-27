@@ -75,10 +75,12 @@ def draw_diamond_keypoint(img, pt, color, border_color=(255, 255, 255), size=11)
     # Border
     cv2.polylines(img, [pts], True, border_color, 2, cv2.LINE_AA)
 
-def draw_ground_joystick_ring(img, center_pt, angle_rad, radius=65, thickness=4, color=(0, 240, 255), arrow_color=(0, 255, 120), opacity=0.85, speed_intensity=1.0):
+def draw_ground_joystick_ring(img, center_pt, angle_rad, radius=65, thickness=4, color=(0, 240, 255), arrow_color=(0, 255, 120), opacity=0.85, speed_scale=1.0, is_wrong_direction=False):
     """
-    Draws an EA FC / FIFA style tactical ground ellipse indicator around player feet
-    with an instantaneous directional arrow pointer responding right as weight shifts.
+    Draws an EA FC / FIFA style tactical ground ellipse indicator around player feet.
+    - Arrow grows/shrinks dynamically based on velocity & displacement speed.
+    - Opacity scales dynamically with speed.
+    - Arrow turns red if defender is wrong-footed / moving in opposing stance to the dribbler.
     """
     if center_pt is None:
         return
@@ -90,37 +92,48 @@ def draw_ground_joystick_ring(img, center_pt, angle_rad, radius=65, thickness=4,
     axes = (int(radius * 1.1), int(radius * 0.42))
     
     # 1. Base ring arc with glow
-    cv2.ellipse(overlay, (cx, cy), axes, 0, 0, 360, (0, 0, 0), thickness + 6, cv2.LINE_AA)
+    ring_glow_color = (0, 0, 0)
+    cv2.ellipse(overlay, (cx, cy), axes, 0, 0, 360, ring_glow_color, thickness + 6, cv2.LINE_AA)
     cv2.ellipse(overlay, (cx, cy), axes, 0, 0, 360, color, thickness, cv2.LINE_AA)
     
     # 2. Dynamic Directional Pointer Arrow (responding to joystick/posture shift)
-    # Convert angle to ellipse perimeter coordinate
     dx = math.cos(angle_rad)
     dy = math.sin(angle_rad)
     
-    arrow_len = radius * (1.2 + 0.4 * speed_intensity)
+    # Dynamic arrow growth / shrink based on velocity & speed_scale
+    clamped_speed = max(0.6, min(2.4, speed_scale))
+    arrow_len = radius * (0.85 + 0.65 * clamped_speed)
+    arrow_width = radius * (0.28 + 0.15 * clamped_speed)
+    
     tip_x = int(cx + dx * arrow_len)
     tip_y = int(cy + dy * (arrow_len * 0.42))
     
-    base_left_x = int(cx + (dx * radius * 0.6) - (dy * radius * 0.3))
-    base_left_y = int(cy + (dy * (radius * 0.6) * 0.42) + (dx * radius * 0.15))
+    base_left_x = int(cx + (dx * radius * 0.6) - (dy * arrow_width))
+    base_left_y = int(cy + (dy * (radius * 0.6) * 0.42) + (dx * arrow_width * 0.5))
     
-    base_right_x = int(cx + (dx * radius * 0.6) + (dy * radius * 0.3))
-    base_right_y = int(cy + (dy * (radius * 0.6) * 0.42) - (dx * radius * 0.15))
+    base_right_x = int(cx + (dx * radius * 0.6) + (dy * arrow_width))
+    base_right_y = int(cy + (dy * (radius * 0.6) * 0.42) - (dx * arrow_width * 0.5))
+    
+    notch_x = int(cx + dx * radius * 0.72)
+    notch_y = int(cy + dy * radius * 0.72 * 0.42)
     
     arrow_pts = np.array([
         [tip_x, tip_y],
         [base_left_x, base_left_y],
-        [int(cx + dx * radius * 0.75), int(cy + dy * radius * 0.75 * 0.42)],
+        [notch_x, notch_y],
         [base_right_x, base_right_y]
     ], np.int32)
     
-    # Fill arrow with vivid responsive neon color
-    cv2.fillConvexPoly(overlay, arrow_pts, arrow_color, cv2.LINE_AA)
-    cv2.polylines(overlay, [arrow_pts], True, (255, 255, 255), 2, cv2.LINE_AA)
+    # Color logic: Crimson Red if wrong-footed / wrong direction, otherwise designated arrow_color (Green/Lime)
+    effective_arrow_color = (40, 50, 255) if is_wrong_direction else arrow_color
+    border_color = (255, 200, 200) if is_wrong_direction else (255, 255, 255)
     
-    # Blend with dynamic opacity based on conviction/speed
-    clamped_opacity = max(0.2, min(0.95, opacity))
+    # Fill arrow
+    cv2.fillConvexPoly(overlay, arrow_pts, effective_arrow_color, cv2.LINE_AA)
+    cv2.polylines(overlay, [arrow_pts], True, border_color, 2, cv2.LINE_AA)
+    
+    # Blend with dynamic opacity based on speed & displacement
+    clamped_opacity = max(0.35, min(0.95, opacity))
     cv2.addWeighted(overlay, clamped_opacity, img, 1.0 - clamped_opacity, 0, img)
 
 class DribbleDuelAnalyzer:
@@ -129,74 +142,87 @@ class DribbleDuelAnalyzer:
         self.pose_model = YOLO(pose_model_name)
         self.conf_thresh = conf_thresh
         
-        # Tracking history for predictive velocity & instantaneous posture vector
-        self.attacker_history = deque(maxlen=15)
-        self.defender_history = deque(maxlen=15)
-        self.smoothed_angle = None
-        self.smoothed_opacity = 0.5
+        # Position and Angle Tracking for Speed & Velocity calculation
+        self.attacker_prev_pos = None
+        self.defender_prev_pos = None
+        self.attacker_smoothed_angle = None
+        self.defender_smoothed_angle = None
+        self.attacker_speed = 0.5
+        self.defender_speed = 0.5
 
-    def compute_posture_direction(self, attacker_kpts, defender_center=None):
+    def compute_player_vector(self, kpts, prev_pos=None, is_defender=False, opponent_center=None):
         """
-        Computes the instantaneous intended direction vector using:
-        1. Torso Lean (shoulders -> hips) - detects body drop/feint before step
-        2. Knee flexion & lead foot plant (ankles)
-        3. Head/facing vector
-        4. Defender stance leverage / open exit corridor
+        Computes the instantaneous velocity + posture direction vector for any player:
+        1. Torso Lean (shoulders -> hips)
+        2. Displacement velocity vector from previous frame
+        3. Stance / foot push-off vector
         """
-        # Torso vector
-        shoulders = self.get_midpoint(attacker_kpts[5], attacker_kpts[6])
-        hips = self.get_midpoint(attacker_kpts[11], attacker_kpts[12])
-        left_ankle = attacker_kpts[15]
-        right_ankle = attacker_kpts[16]
+        shoulders = self.get_midpoint(kpts[5], kpts[6])
+        hips = self.get_midpoint(kpts[11], kpts[12])
+        left_ankle = kpts[15]
+        right_ankle = kpts[16]
         
         vec_x, vec_y = 0.0, 0.0
         weight_sum = 0.0
-        intensity = 0.5
+        speed_displacement = 0.0
         
-        # A. Torso / Shoulder Drop Lean (Highest predictive indicator - joystick tilt)
+        # A. Center Position & Frame Displacement
+        current_center = hips if hips is not None else shoulders
+        if current_center is not None and prev_pos is not None:
+            disp_x = current_center[0] - prev_pos[0]
+            disp_y = current_center[1] - prev_pos[1]
+            speed_displacement = math.hypot(disp_x, disp_y)
+            # Add velocity to vector
+            vec_x += disp_x * 4.0
+            vec_y += disp_y * 4.0
+            weight_sum += 4.0
+
+        # B. Torso Lean (Joystick Angle Shift before movement)
         if shoulders is not None and hips is not None:
-            torso_dx = shoulders[0] - hips[0] # Positive = leaning right
+            torso_dx = shoulders[0] - hips[0]
             torso_dy = shoulders[1] - hips[1]
-            vec_x += torso_dx * 3.5
-            vec_y += torso_dy * 1.2
-            weight_sum += 3.5
-            intensity = min(1.5, abs(torso_dx) / 35.0 + 0.4)
+            vec_x += torso_dx * 3.0
+            vec_y += torso_dy * 1.5
+            weight_sum += 3.0
             
-        # B. Plant Foot vs Push-Off Foot Vector
-        if left_ankle[2] > 0.3 and right_ankle[2] > 0.3:
-            # Distance between feet
-            step_dx = right_ankle[0] - left_ankle[0]
-            # If hips are shifted forward relative to feet
-            if hips is not None:
-                feet_mid_x = (left_ankle[0] + right_ankle[0]) / 2.0
-                hip_offset_x = hips[0] - feet_mid_x
-                vec_x += hip_offset_x * 2.0
-                weight_sum += 2.0
-                
-        # C. Defender Stance Opposition Vector
-        if defender_center is not None and hips is not None:
-            # Space channel away from defender's core
-            def_rel_x = hips[0] - defender_center[0]
-            vec_x += np.sign(def_rel_x) * 15.0
-            weight_sum += 1.0
+        # C. Stance / Footing
+        if left_ankle[2] > 0.3 and right_ankle[2] > 0.3 and hips is not None:
+            feet_mid_x = (left_ankle[0] + right_ankle[0]) / 2.0
+            hip_offset_x = hips[0] - feet_mid_x
+            vec_x += hip_offset_x * 2.5
+            weight_sum += 2.5
 
-        if weight_sum > 0:
-            target_angle = math.atan2(vec_y * 0.5, vec_x)
+        if weight_sum > 0 and (abs(vec_x) > 0.1 or abs(vec_y) > 0.1):
+            target_angle = math.atan2(vec_y * 0.6, vec_x)
         else:
-            target_angle = 0.0 # Default forward/right
+            target_angle = 0.0 if not is_defender else math.pi
 
-        # Smooth angle transitions to eliminate jitter while keeping instant response
-        if self.smoothed_angle is None:
-            self.smoothed_angle = target_angle
-        else:
-            # Angular interpolation
-            diff = (target_angle - self.smoothed_angle + math.pi) % (2 * math.pi) - math.pi
-            self.smoothed_angle += diff * 0.45
-            
-        target_opacity = min(0.95, max(0.3, intensity * 0.85))
-        self.smoothed_opacity = self.smoothed_opacity * 0.6 + target_opacity * 0.4
+        # Dynamic Speed / Intensity Score (combining displacement & posture tilt)
+        speed_score = min(2.2, max(0.5, (speed_displacement / 12.0) + (abs(vec_x) / 30.0)))
+        opacity_score = min(0.95, max(0.35, 0.45 + (speed_score * 0.28)))
         
-        return self.smoothed_angle, self.smoothed_opacity, intensity
+        return target_angle, opacity_score, speed_score, current_center
+
+    def is_defender_wrong_footed(self, att_angle, def_angle, att_center, def_center):
+        """
+        Determines if the defender is wrong-footed / moving in the wrong direction relative to the dribbler.
+        If the dribbler is bursting right/forward and defender is leaning or stepping in the opposite direction,
+        return True (Turns Red).
+        """
+        if att_angle is None or def_angle is None:
+            return False
+            
+        att_dx = math.cos(att_angle)
+        def_dx = math.cos(def_angle)
+        
+        # When defender is facing the attacker to jockey, their response vector should follow the dribbler's lateral cut
+        # If the attacker cuts right (att_dx > 0) but defender commits left (def_dx < -0.2), defender is wrong-footed
+        dot_product = math.cos(att_angle - def_angle)
+        
+        # If dot product indicates opposing lateral commitments or severe mismatch (> 100 degrees mismatch in lateral coverage)
+        lateral_mismatch = (att_dx * def_dx < -0.15)
+        
+        return lateral_mismatch or (dot_product < -0.35)
 
     def process_video(self, video_path, output_path, max_frames=None):
         cap = cv2.VideoCapture(str(video_path))
@@ -274,8 +300,93 @@ class DribbleDuelAnalyzer:
             
             annotated_frame = frame.copy()
             
-            # 2. Draw Defender Skeleton (Blue / Cyan Theme)
+            att_angle, att_opacity, att_speed = 0.0, 0.5, 0.5
+            att_feet_center = None
+            def_angle, def_opacity, def_speed = math.pi, 0.5, 0.5
+            def_feet_center = None
+            
+            # 1. Compute Attacker Vector & Feet Center
+            if attacker_info is not None:
+                kpts = attacker_info["kpts"]
+                left_ankle = kpts[15]
+                right_ankle = kpts[16]
+                if left_ankle[2] > 0.25 and right_ankle[2] > 0.25:
+                    att_feet_center = ((left_ankle[0] + right_ankle[0]) / 2.0, max(left_ankle[1], right_ankle[1]) + 8)
+                else:
+                    att_feet_center = (attacker_info["center"][0], attacker_info["box"][3] - 8)
+                    
+                target_ang, opac, spd, curr_pos = self.compute_player_vector(
+                    kpts, 
+                    prev_pos=self.attacker_prev_pos, 
+                    is_defender=False
+                )
+                self.attacker_prev_pos = curr_pos
+                
+                # Smooth angle
+                if self.attacker_smoothed_angle is None:
+                    self.attacker_smoothed_angle = target_ang
+                else:
+                    diff = (target_ang - self.attacker_smoothed_angle + math.pi) % (2 * math.pi) - math.pi
+                    self.attacker_smoothed_angle += diff * 0.45
+                    
+                att_angle = self.attacker_smoothed_angle
+                att_opacity = opac
+                att_speed = spd
+                
+            # 2. Compute Defender Vector & Feet Center
             if defender_info is not None:
+                kpts = defender_info["kpts"]
+                left_ankle = kpts[15]
+                right_ankle = kpts[16]
+                if left_ankle[2] > 0.25 and right_ankle[2] > 0.25:
+                    def_feet_center = ((left_ankle[0] + right_ankle[0]) / 2.0, max(left_ankle[1], right_ankle[1]) + 8)
+                else:
+                    def_feet_center = (defender_info["center"][0], defender_info["box"][3] - 8)
+                    
+                target_ang, opac, spd, curr_pos = self.compute_player_vector(
+                    kpts, 
+                    prev_pos=self.defender_prev_pos, 
+                    is_defender=True
+                )
+                self.defender_prev_pos = curr_pos
+                
+                # Smooth defender angle
+                if self.defender_smoothed_angle is None:
+                    self.defender_smoothed_angle = target_ang
+                else:
+                    diff = (target_ang - self.defender_smoothed_angle + math.pi) % (2 * math.pi) - math.pi
+                    self.defender_smoothed_angle += diff * 0.45
+                    
+                def_angle = self.defender_smoothed_angle
+                def_opacity = opac
+                def_speed = spd
+
+            # 3. Check if defender is wrong-footed relative to dribbler
+            is_def_wrong_footed = False
+            if attacker_info is not None and defender_info is not None:
+                is_def_wrong_footed = self.is_defender_wrong_footed(
+                    att_angle, 
+                    def_angle, 
+                    attacker_info["center"], 
+                    defender_info["center"]
+                )
+
+            # 4. Draw Defender Ground Ring & Skeleton
+            if defender_info is not None and def_feet_center is not None:
+                # Defender Ground Indicator: Cyan Ring + Green Arrow (or RED if wrong-footed)
+                draw_ground_joystick_ring(
+                    annotated_frame,
+                    center_pt=def_feet_center,
+                    angle_rad=def_angle,
+                    radius=int(min(width, height) * 0.052),
+                    thickness=3,
+                    color=(255, 190, 0),        # Cyan Ring
+                    arrow_color=(0, 255, 120),    # Green (or Red if wrong footed)
+                    opacity=def_opacity,
+                    speed_scale=def_speed,
+                    is_wrong_direction=is_def_wrong_footed
+                )
+                
                 self.render_player_skeleton(
                     annotated_frame, 
                     defender_info["kpts"],
@@ -285,32 +396,20 @@ class DribbleDuelAnalyzer:
                     role="DEFENDER"
                 )
                 
-            # 3. Draw Attacker Skeleton (Pink / Rose Theme) & FIFA-Style Directional Ring
-            if attacker_info is not None:
-                kpts = attacker_info["kpts"]
-                
-                # Ground center anchor (midpoint of feet or bottom of bounding box)
-                left_ankle = kpts[15]
-                right_ankle = kpts[16]
-                if left_ankle[2] > 0.25 and right_ankle[2] > 0.25:
-                    feet_center = ((left_ankle[0] + right_ankle[0]) / 2.0, max(left_ankle[1], right_ankle[1]) + 8)
-                else:
-                    feet_center = (attacker_info["center"][0], attacker_info["box"][3] - 10)
-                
-                def_center = defender_info["center"] if defender_info is not None else None
-                angle, opacity, intensity = self.compute_posture_direction(kpts, def_center)
-                
-                # Draw FIFA/FC Mobile style responsive ground ring + joystick vector arrow
+            # 5. Draw Attacker Ground Ring & Skeleton
+            if attacker_info is not None and att_feet_center is not None:
+                # Attacker Ground Indicator: Neon Pink Ring + Electric Lime Arrow (grows with burst speed)
                 draw_ground_joystick_ring(
                     annotated_frame,
-                    center_pt=feet_center,
-                    angle_rad=angle,
+                    center_pt=att_feet_center,
+                    angle_rad=att_angle,
                     radius=int(min(width, height) * 0.055),
                     thickness=3,
                     color=(220, 50, 255),       # Neon Pink Arc
-                    arrow_color=(0, 255, 140),   # Electric Lime Arrow (instant feedback)
-                    opacity=opacity,
-                    speed_intensity=intensity
+                    arrow_color=(0, 255, 140),   # Electric Lime Arrow
+                    opacity=att_opacity,
+                    speed_scale=att_speed,
+                    is_wrong_direction=False
                 )
 
                 self.render_player_skeleton(
@@ -322,8 +421,8 @@ class DribbleDuelAnalyzer:
                     role="ATTACKER"
                 )
                 
-            # 4. Render Tactical Telemetry Overlay
-            self.render_hud_overlay(annotated_frame, attacker_info, defender_info, frame_idx, total_frames)
+            # 6. Render Tactical Telemetry Overlay
+            self.render_hud_overlay(annotated_frame, attacker_info, defender_info, frame_idx, total_frames, is_def_wrong_footed)
             
             out.write(annotated_frame)
             if frame_idx % 30 == 0:
@@ -370,29 +469,30 @@ class DribbleDuelAnalyzer:
                     size=size
                 )
 
-    def render_hud_overlay(self, img, attacker, defender, frame_idx, total_frames):
+    def render_hud_overlay(self, img, attacker, defender, frame_idx, total_frames, is_wrong_footed=False):
         """Draws dynamic sports intelligence telemetry (angles, stance width, duel balance)."""
         h, w = img.shape[:2]
         
         # Top Left Badge
-        badge_w, badge_h = 320, 68
+        badge_w, badge_h = 360, 75
         overlay = img.copy()
         cv2.rectangle(overlay, (20, 20), (20 + badge_w, 20 + badge_h), (10, 15, 25), -1)
-        cv2.addWeighted(overlay, 0.75, img, 0.25, 0, img)
+        cv2.addWeighted(overlay, 0.8, img, 0.2, 0, img)
         cv2.rectangle(img, (20, 20), (20 + badge_w, 20 + badge_h), (0, 240, 255), 1)
         
         cv2.putText(img, "META-VISION // 1v1 DUEL TRACKER", (32, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 240, 255), 1, cv2.LINE_AA)
         
-        # Calculate dynamic angles if attacker exists
+        if is_wrong_footed:
+            status_text = "DEFENDER: WRONG-FOOTED [STANCE MISMATCH]"
+            status_color = (40, 60, 255) # Red
+        else:
+            status_text = "DEFENDER: BALANCED JOCKEY [TRACKING DRIBBLER]"
+            status_color = (0, 255, 120) # Green
+            
+        cv2.putText(img, status_text, (32, 64), cv2.FONT_HERSHEY_SIMPLEX, 0.42, status_color, 1, cv2.LINE_AA)
+        
         if attacker is not None:
-            kpts = attacker["kpts"]
-            # Knee bend angle
-            if kpts[11][2] > 0.3 and kpts[13][2] > 0.3 and kpts[15][2] > 0.3:
-                knee_angle = self.calculate_angle(kpts[11], kpts[13], kpts[15])
-                text_stat = f"ATTACKER KNEE FLEX: {int(knee_angle)} deg | POSTURE: LOW AGILITY"
-            else:
-                text_stat = "ATTACKER: STEP-OVER ACCELERATION"
-            cv2.putText(img, text_stat, (32, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 100, 220), 1, cv2.LINE_AA)
+            cv2.putText(img, "ATTACKER: INSTANT POSTURE VECTOR ACTIVE", (32, 84), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (255, 120, 240), 1, cv2.LINE_AA)
 
     def calculate_angle(self, a, b, c):
         """Returns the angle at joint b in degrees."""
