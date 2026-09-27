@@ -277,26 +277,40 @@ class DribbleDuelAnalyzer:
                 
             players = sorted(players, key=lambda p: p["area"], reverse=True)
             
-            # Take top 2 foreground players for the 1v1 duel
+            # Filter players by foreground prominence (exclude tiny distant background players)
+            if len(players) > 0:
+                max_area = players[0]["area"]
+                prominent_players = [p for p in players if p["area"] >= max_area * 0.35]
+            else:
+                prominent_players = []
+
             attacker_info = None
             defender_info = None
             
-            if len(players) >= 1:
-                if len(players) == 1:
-                    attacker_info = players[0]
+            if len(prominent_players) == 1:
+                attacker_info = prominent_players[0]
+            elif len(prominent_players) >= 2:
+                # Find the pair of players closest to each other (the 1v1 duel)
+                min_duel_dist = float('inf')
+                best_pair = (prominent_players[0], prominent_players[1])
+                
+                for i in range(len(prominent_players)):
+                    for j in range(i + 1, len(prominent_players)):
+                        p_a = prominent_players[i]
+                        p_b = prominent_players[j]
+                        dist = math.hypot(p_a["center"][0] - p_b["center"][0], p_a["center"][1] - p_b["center"][1])
+                        if dist < min_duel_dist:
+                            min_duel_dist = dist
+                            best_pair = (p_a, p_b)
+                
+                p1, p2 = best_pair
+                # The player with deeper foot positioning or more dynamic lateral angle is the attacker
+                if p1["box"][3] >= p2["box"][3]:
+                    attacker_info = p1
+                    defender_info = p2
                 else:
-                    p1 = players[0]
-                    p2 = players[1]
-                    
-                    p1_bottom = p1["box"][3]
-                    p2_bottom = p2["box"][3]
-                    
-                    if p1_bottom >= p2_bottom:
-                        attacker_info = p1
-                        defender_info = p2
-                    else:
-                        attacker_info = p2
-                        defender_info = p1
+                    attacker_info = p2
+                    defender_info = p1
             
             annotated_frame = frame.copy()
             
