@@ -137,18 +137,32 @@ def draw_ground_joystick_ring(img, center_pt, angle_rad, radius=65, thickness=4,
     cv2.addWeighted(overlay, clamped_opacity, img, 1.0 - clamped_opacity, 0, img)
 
 class DribbleDuelAnalyzer:
-    def __init__(self, pose_model_name="yolov8m-pose.pt", conf_thresh=0.4):
+    def __init__(self, pose_model_name="yolov8m-pose.pt", det_model_name="runs/detect/train/weights/best.pt", conf_thresh=0.35):
         print(f"Loading Pose Model: {pose_model_name}...")
         self.pose_model = YOLO(pose_model_name)
+        
+        # Load object detector for ball and goalkeeper tracking
+        self.det_model = None
+        det_path = Path(det_model_name)
+        if det_path.exists():
+            print(f"Loading Object Detector: {det_model_name}...")
+            self.det_model = YOLO(str(det_path))
+        else:
+            print("Using COCO fallback detector...")
+            self.det_model = YOLO("yolov8n.pt")
+            
         self.conf_thresh = conf_thresh
         
-        # Position and Angle Tracking for Speed & Velocity calculation
+        # Persistent identity tracking across frames
+        self.current_dribbler_box = None
+        self.dribbler_history = deque(maxlen=20)
+        self.defender_histories = {}
+        
+        # Motion vectors
         self.attacker_prev_pos = None
         self.defender_prev_pos = None
         self.attacker_smoothed_angle = None
         self.defender_smoothed_angle = None
-        self.attacker_speed = 0.5
-        self.defender_speed = 0.5
 
     def compute_player_vector(self, kpts, prev_pos=None, is_defender=False, opponent_center=None):
         """
@@ -206,8 +220,6 @@ class DribbleDuelAnalyzer:
     def is_defender_wrong_footed(self, att_angle, def_angle, att_center, def_center):
         """
         Determines if the defender is wrong-footed / moving in the wrong direction relative to the dribbler.
-        If the dribbler is bursting right/forward and defender is leaning or stepping in the opposite direction,
-        return True (Turns Red).
         """
         if att_angle is None or def_angle is None:
             return False
@@ -215,14 +227,20 @@ class DribbleDuelAnalyzer:
         att_dx = math.cos(att_angle)
         def_dx = math.cos(def_angle)
         
-        # When defender is facing the attacker to jockey, their response vector should follow the dribbler's lateral cut
-        # If the attacker cuts right (att_dx > 0) but defender commits left (def_dx < -0.2), defender is wrong-footed
         dot_product = math.cos(att_angle - def_angle)
-        
-        # If dot product indicates opposing lateral commitments or severe mismatch (> 100 degrees mismatch in lateral coverage)
         lateral_mismatch = (att_dx * def_dx < -0.15)
         
         return lateral_mismatch or (dot_product < -0.35)
+
+    def calculate_box_iou(self, boxA, boxB):
+        xA = max(boxA[0], boxB[0])
+        yA = max(boxA[1], boxB[1])
+        xB = min(boxA[2], boxB[2])
+        yB = min(boxA[3], boxB[3])
+        interArea = max(0, xB - xA) * max(0, yB - yA)
+        boxAArea = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
+        boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
+        return interArea / float(boxAArea + boxBArea - interArea + 1e-6)
 
     def process_video(self, video_path, output_path, max_frames=None):
         cap = cv2.VideoCapture(str(video_path))
@@ -252,14 +270,31 @@ class DribbleDuelAnalyzer:
             if max_frames and frame_idx > max_frames:
                 break
                 
-            # 1. Run YOLO-Pose Inference
+            # 1. Detect Ball & Goalkeepers with Object Detector
+            ball_pos = None
+            gk_boxes = []
+            if self.det_model is not None:
+                det_res = self.det_model(frame, conf=0.15, verbose=False)[0]
+                det_boxes = det_res.boxes.xyxy.cpu().numpy() if det_res.boxes is not None else []
+                det_classes = det_res.boxes.cls.cpu().numpy() if det_res.boxes is not None else []
+                det_confs = det_res.boxes.conf.cpu().numpy() if det_res.boxes is not None else []
+                
+                # Check for ball (class 3 in custom model, 32 in COCO)
+                best_ball_conf = 0.0
+                for d_box, d_cls, d_conf in zip(det_boxes, det_classes, det_confs):
+                    cls_id = int(d_cls)
+                    if cls_id == 3 or cls_id == 32: # Ball
+                        if d_conf > best_ball_conf:
+                            best_ball_conf = d_conf
+                            ball_pos = ((d_box[0] + d_box[2]) / 2.0, (d_box[1] + d_box[3]) / 2.0)
+                    elif cls_id == 1: # Goalkeeper
+                        gk_boxes.append(d_box)
+
+            # 2. Run YOLO-Pose Inference for All Players
             results = self.pose_model(frame, conf=self.conf_thresh, verbose=False)[0]
-            
-            # Extract keypoints and boxes
             boxes = results.boxes.xyxy.cpu().numpy() if results.boxes is not None else []
             keypoints_data = results.keypoints.data.cpu().numpy() if results.keypoints is not None else []
             
-            # Sort players by box area (largest players are the foreground 1v1 duelists)
             players = []
             for i in range(len(boxes)):
                 box = boxes[i]
@@ -267,59 +302,117 @@ class DribbleDuelAnalyzer:
                 area = (box[2] - box[0]) * (box[3] - box[1])
                 center_x = (box[0] + box[2]) / 2.0
                 center_y = (box[1] + box[3]) / 2.0
+                
+                # Check if this player is a goalkeeper
+                is_gk = False
+                for g_box in gk_boxes:
+                    if self.calculate_box_iou(box, g_box) > 0.35:
+                        is_gk = True
+                        break
+                # Goalkeepers on the far side / penalty box (e.g. left side jersey in Sociedad clip)
+                if not is_gk and center_x < width * 0.15 and center_y < height * 0.65:
+                    is_gk = True
+                    
+                # Distance to ball if ball is detected
+                ball_dist = float('inf')
+                if ball_pos is not None:
+                    # Feet center
+                    if kpts[15][2] > 0.2 and kpts[16][2] > 0.2:
+                        feet_x = (kpts[15][0] + kpts[16][0]) / 2.0
+                        feet_y = (kpts[15][1] + kpts[16][1]) / 2.0
+                    else:
+                        feet_x = center_x
+                        feet_y = box[3]
+                    ball_dist = math.hypot(feet_x - ball_pos[0], feet_y - ball_pos[1])
+                    
                 players.append({
+                    "id": i,
                     "box": box,
                     "kpts": kpts,
                     "area": area,
                     "center": (center_x, center_y),
+                    "ball_dist": ball_dist,
+                    "is_gk": is_gk,
                     "conf": float(results.boxes.conf[i].cpu().numpy())
                 })
                 
-            players = sorted(players, key=lambda p: p["area"], reverse=True)
-            
-            # Filter players by foreground prominence (exclude tiny distant background players)
+            # Filter valid player detections
             if len(players) > 0:
-                max_area = players[0]["area"]
-                prominent_players = [p for p in players if p["area"] >= max_area * 0.35]
+                max_area = max(p["area"] for p in players)
+                # Keep prominent players and remove extreme background noise
+                prominent_players = [p for p in players if p["area"] >= max_area * 0.20]
             else:
                 prominent_players = []
 
+            # 3. Persistent Dribbler Selection (Ball Carrier - Pink)
             attacker_info = None
-            defender_info = None
-            
-            if len(prominent_players) == 1:
-                attacker_info = prominent_players[0]
-            elif len(prominent_players) >= 2:
-                # Find the pair of players closest to each other (the 1v1 duel)
-                min_duel_dist = float('inf')
-                best_pair = (prominent_players[0], prominent_players[1])
-                
-                for i in range(len(prominent_players)):
-                    for j in range(i + 1, len(prominent_players)):
-                        p_a = prominent_players[i]
-                        p_b = prominent_players[j]
-                        dist = math.hypot(p_a["center"][0] - p_b["center"][0], p_a["center"][1] - p_b["center"][1])
-                        if dist < min_duel_dist:
-                            min_duel_dist = dist
-                            best_pair = (p_a, p_b)
-                
-                p1, p2 = best_pair
-                # The player with deeper foot positioning or more dynamic lateral angle is the attacker
-                if p1["box"][3] >= p2["box"][3]:
-                    attacker_info = p1
-                    defender_info = p2
+            defender_list = []
+            gk_list = []
+
+            # Separate Goalkeepers
+            non_gk_players = []
+            for p in prominent_players:
+                if p["is_gk"]:
+                    gk_list.append(p)
                 else:
-                    attacker_info = p2
-                    defender_info = p1
-            
+                    non_gk_players.append(p)
+
+            # Assign Ball Carrier / Attacker
+            if len(non_gk_players) > 0:
+                # If we have tracked the dribbler in previous frames, use IoU / spatial continuity
+                best_att_score = -1.0
+                best_att_idx = 0
+                
+                for idx, p in enumerate(non_gk_players):
+                    score = 0.0
+                    # IoU match with previous dribbler box (Strong weight: avoids jumping!)
+                    if self.current_dribbler_box is not None:
+                        iou = self.calculate_box_iou(p["box"], self.current_dribbler_box)
+                        score += iou * 70.0
+                        # Distance to previous center
+                        prev_c = ((self.current_dribbler_box[0] + self.current_dribbler_box[2]) / 2.0,
+                                  (self.current_dribbler_box[1] + self.current_dribbler_box[3]) / 2.0)
+                        dist = math.hypot(p["center"][0] - prev_c[0], p["center"][1] - prev_c[1])
+                        score += max(0.0, (200.0 - dist) / 5.0)
+                    
+                    # Proximity to ball
+                    if p["ball_dist"] < float('inf'):
+                        score += max(0.0, (400.0 - p["ball_dist"]) / 4.0)
+                        
+                    # Lower on pitch foreground priority
+                    score += (p["box"][3] / float(height)) * 20.0
+                    
+                    if score > best_att_score:
+                        best_att_score = score
+                        best_att_idx = idx
+
+                attacker_info = non_gk_players[best_att_idx]
+                self.current_dribbler_box = attacker_info["box"]
+                
+                # All other outfield players are Defenders (Blue)
+                for idx, p in enumerate(non_gk_players):
+                    if idx != best_att_idx:
+                        defender_list.append(p)
+            else:
+                self.current_dribbler_box = None
+
             annotated_frame = frame.copy()
             
             att_angle, att_opacity, att_speed = 0.0, 0.5, 0.5
             att_feet_center = None
-            def_angle, def_opacity, def_speed = math.pi, 0.5, 0.5
-            def_feet_center = None
-            
-            # 1. Compute Attacker Vector & Feet Center
+
+            # 4. Draw Goalkeepers (Orange Skeleton)
+            for gk in gk_list:
+                self.render_player_skeleton(
+                    annotated_frame, 
+                    gk["kpts"],
+                    bone_color=(0, 140, 255),       # Vibrant Orange BGR (#FF8C00)
+                    glow_color=(0, 100, 220),
+                    joint_color=(50, 180, 255),
+                    role="GOALKEEPER"
+                )
+
+            # 5. Compute Attacker Vector & Feet Center
             if attacker_info is not None:
                 kpts = attacker_info["kpts"]
                 left_ankle = kpts[15]
@@ -346,73 +439,68 @@ class DribbleDuelAnalyzer:
                 att_angle = self.attacker_smoothed_angle
                 att_opacity = opac
                 att_speed = spd
-                
-            # 2. Compute Defender Vector & Feet Center
-            if defender_info is not None:
-                kpts = defender_info["kpts"]
-                left_ankle = kpts[15]
-                right_ankle = kpts[16]
-                if left_ankle[2] > 0.25 and right_ankle[2] > 0.25:
-                    def_feet_center = ((left_ankle[0] + right_ankle[0]) / 2.0, max(left_ankle[1], right_ankle[1]) + 8)
+
+            # 6. Draw All Defenders (Blue Skeletons + Dual Ground Indicators)
+            primary_defender = defender_list[0] if len(defender_list) > 0 else None
+            is_any_wrong_footed = False
+            
+            for d_idx, defender_info in enumerate(defender_list):
+                d_kpts = defender_info["kpts"]
+                d_left_ankle = d_kpts[15]
+                d_right_ankle = d_kpts[16]
+                if d_left_ankle[2] > 0.25 and d_right_ankle[2] > 0.25:
+                    d_feet_center = ((d_left_ankle[0] + d_right_ankle[0]) / 2.0, max(d_left_ankle[1], d_right_ankle[1]) + 8)
                 else:
-                    def_feet_center = (defender_info["center"][0], defender_info["box"][3] - 8)
+                    d_feet_center = (defender_info["center"][0], defender_info["box"][3] - 8)
                     
-                target_ang, opac, spd, curr_pos = self.compute_player_vector(
-                    kpts, 
-                    prev_pos=self.defender_prev_pos, 
+                prev_d_pos = self.defender_histories.get(d_idx, None)
+                d_target_ang, d_opac, d_spd, d_curr_pos = self.compute_player_vector(
+                    d_kpts, 
+                    prev_pos=prev_d_pos, 
                     is_defender=True
                 )
-                self.defender_prev_pos = curr_pos
+                self.defender_histories[d_idx] = d_curr_pos
                 
-                # Smooth defender angle
-                if self.defender_smoothed_angle is None:
-                    self.defender_smoothed_angle = target_ang
-                else:
-                    diff = (target_ang - self.defender_smoothed_angle + math.pi) % (2 * math.pi) - math.pi
-                    self.defender_smoothed_angle += diff * 0.45
-                    
-                def_angle = self.defender_smoothed_angle
-                def_opacity = opac
-                def_speed = spd
+                # Wrong-footing detection
+                is_def_wrong_footed = False
+                if attacker_info is not None:
+                    is_def_wrong_footed = self.is_defender_wrong_footed(
+                        att_angle, 
+                        d_target_ang, 
+                        attacker_info["center"], 
+                        defender_info["center"]
+                    )
+                    if is_def_wrong_footed:
+                        is_any_wrong_footed = True
 
-            # 3. Check if defender is wrong-footed relative to dribbler
-            is_def_wrong_footed = False
-            if attacker_info is not None and defender_info is not None:
-                is_def_wrong_footed = self.is_defender_wrong_footed(
-                    att_angle, 
-                    def_angle, 
-                    attacker_info["center"], 
-                    defender_info["center"]
-                )
+                # Only draw ground joystick arrow for the closest/primary marking defender
+                is_closest_marking = (d_idx == 0)
+                if is_closest_marking and d_feet_center is not None:
+                    draw_ground_joystick_ring(
+                        annotated_frame,
+                        center_pt=d_feet_center,
+                        angle_rad=d_target_ang,
+                        radius=int(min(width, height) * 0.052),
+                        thickness=3,
+                        color=(255, 190, 0),        # Cyan Ring
+                        arrow_color=(0, 255, 120),    # Green (or Red if wrong-footed)
+                        opacity=d_opac,
+                        speed_scale=d_spd,
+                        is_wrong_direction=is_def_wrong_footed
+                    )
 
-            # 4. Draw Defender Ground Ring & Skeleton
-            if defender_info is not None and def_feet_center is not None:
-                # Defender Ground Indicator: Cyan Ring + Green Arrow (or RED if wrong-footed)
-                draw_ground_joystick_ring(
-                    annotated_frame,
-                    center_pt=def_feet_center,
-                    angle_rad=def_angle,
-                    radius=int(min(width, height) * 0.052),
-                    thickness=3,
-                    color=(255, 190, 0),        # Cyan Ring
-                    arrow_color=(0, 255, 120),    # Green (or Red if wrong footed)
-                    opacity=def_opacity,
-                    speed_scale=def_speed,
-                    is_wrong_direction=is_def_wrong_footed
-                )
-                
+                # Draw Blue Skeleton for all defenders
                 self.render_player_skeleton(
                     annotated_frame, 
                     defender_info["kpts"],
-                    bone_color=(255, 180, 0),       # Cyan-Blue BGR
+                    bone_color=(255, 180, 0),       # Cyan-Blue BGR (#00B4FF)
                     glow_color=(255, 120, 0),
                     joint_color=(255, 220, 50),
                     role="DEFENDER"
                 )
-                
-            # 5. Draw Attacker Ground Ring & Skeleton
+
+            # 7. Draw Attacker (Pink Skeleton + Instant Joystick Ground Ring)
             if attacker_info is not None and att_feet_center is not None:
-                # Attacker Ground Indicator: Neon Pink Ring + Electric Lime Arrow (grows with burst speed)
                 draw_ground_joystick_ring(
                     annotated_frame,
                     center_pt=att_feet_center,
@@ -429,14 +517,14 @@ class DribbleDuelAnalyzer:
                 self.render_player_skeleton(
                     annotated_frame, 
                     attacker_info["kpts"],
-                    bone_color=(190, 40, 255),      # Neon Pink BGR
+                    bone_color=(190, 40, 255),      # Neon Pink BGR (#FF28BE)
                     glow_color=(140, 20, 230),
                     joint_color=(220, 100, 255),
                     role="ATTACKER"
                 )
                 
-            # 6. Render Tactical Telemetry Overlay
-            self.render_hud_overlay(annotated_frame, attacker_info, defender_info, frame_idx, total_frames, is_def_wrong_footed)
+            # 8. Render Tactical Telemetry Overlay
+            self.render_hud_overlay(annotated_frame, attacker_info, primary_defender, frame_idx, total_frames, is_any_wrong_footed)
             
             out.write(annotated_frame)
             if frame_idx % 30 == 0:
