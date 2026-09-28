@@ -34,6 +34,7 @@ import argparse
 import json
 import sys
 import os
+import math
 from collections import deque
 import cv2
 import numpy as np
@@ -124,28 +125,95 @@ def draw_glowing_ball(frame, center, radius, trail):
     cv2.circle(frame, ball_center, max(1, radius // 2), (255, 255, 255), -1, cv2.LINE_AA)
 
 
-def draw_tactical_vector(canvas, start_pt, end_pt, color_bgr, alpha=0.9, is_shot=False, label=""):
-    """Draw an ultra-thin, sleek tactical trajectory with an ethereal light glow."""
+def draw_tactical_vector(canvas, start_pt, end_pt, color_bgr, alpha=0.9, subtype="ground", prob=None, label=""):
+    """Draw tactical trajectory with pass-type styling (curves for crosses, dashes/tags for through passes)."""
     x1, y1 = int(start_pt[0]), int(start_pt[1])
     x2, y2 = int(end_pt[0]), int(end_pt[1])
 
-    # Create temporary overlay for high-precision transparency blending
     glow_canvas = canvas.copy()
 
-    # Outer ethereal glow layer (soft thin halo)
-    cv2.line(glow_canvas, (x1, y1), (x2, y2), color_bgr, 5 if not is_shot else 6, cv2.LINE_AA)
-    # Inner crisp precision vector
-    cv2.line(glow_canvas, (x1, y1), (x2, y2), (255, 255, 255), 1, cv2.LINE_AA)
-    # Target reticle ring
-    cv2.circle(glow_canvas, (x2, y2), 6, color_bgr, 2, cv2.LINE_AA)
-    cv2.circle(glow_canvas, (x2, y2), 2, (255, 255, 255), -1, cv2.LINE_AA)
+    if subtype in ("lob", "cross"):
+        # Draw arched curve trajectory for aerial lofted balls
+        mid_x = (x1 + x2) // 2
+        mid_y = min(y1, y2) - max(25, int(math.dist(start_pt, end_pt) * 0.18))
+        curve_pts = []
+        for t in np.linspace(0, 1, 24):
+            bx = int((1-t)**2 * x1 + 2*(1-t)*t * mid_x + t**2 * x2)
+            by = int((1-t)**2 * y1 + 2*(1-t)*t * mid_y + t**2 * y2)
+            curve_pts.append((bx, by))
+        
+        for i in range(len(curve_pts) - 1):
+            cv2.line(glow_canvas, curve_pts[i], curve_pts[i+1], color_bgr, 4, cv2.LINE_AA)
+            cv2.line(glow_canvas, curve_pts[i], curve_pts[i+1], (255, 255, 255), 1, cv2.LINE_AA)
 
-    # Blend with exact specified opacity
+        mid_pt = curve_pts[len(curve_pts)//2]
+    else:
+        # Ground or Through Ball trajectory
+        if subtype == "through_ball":
+            # Animated style line
+            cv2.line(glow_canvas, (x1, y1), (x2, y2), color_bgr, 5, cv2.LINE_AA)
+            cv2.line(glow_canvas, (x1, y1), (x2, y2), (255, 255, 255), 2, cv2.LINE_AA)
+        else:
+            cv2.line(glow_canvas, (x1, y1), (x2, y2), color_bgr, 4, cv2.LINE_AA)
+            cv2.line(glow_canvas, (x1, y1), (x2, y2), (255, 255, 255), 1, cv2.LINE_AA)
+        
+        mid_pt = ((x1 + x2) // 2, (y1 + y2) // 2)
+
+    # Target indicator ring
+    cv2.circle(glow_canvas, (x2, y2), 7, color_bgr, 2, cv2.LINE_AA)
+    cv2.circle(glow_canvas, (x2, y2), 3, (255, 255, 255), -1, cv2.LINE_AA)
+
+    # Render floating Success Probability Badge (e.g. 74% / 88%)
+    if prob is not None:
+        tag_text = f"{prob}%"
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        scale = 0.44
+        (tw, th), _ = cv2.getTextSize(tag_text, font, scale, 1)
+        bx, by = mid_pt[0] - tw // 2, mid_pt[1] - 8
+        cv2.rectangle(glow_canvas, (bx - 5, by - th - 4), (bx + tw + 5, by + 4), (12, 22, 34), -1)
+        cv2.rectangle(glow_canvas, (bx - 5, by - th - 4), (bx + tw + 5, by + 4), color_bgr, 1)
+        prob_col = (80, 240, 120) if prob >= 65 else ((60, 200, 255) if prob >= 40 else (70, 70, 255))
+        cv2.putText(glow_canvas, tag_text, (bx, by - 1), font, scale, prob_col, 1, cv2.LINE_AA)
+
     cv2.addWeighted(glow_canvas, alpha, canvas, 1.0 - alpha, 0, canvas)
 
 
-def draw_prediction_panel(frame, prediction, player_pixels):
-    """Add a tactical sidebar and projected pass/shot suggestion paths."""
+def draw_space_zone_shading(canvas, space_zones, transformer):
+    """Highlight high-threat exploitable pitch zones with glowing semi-transparent emerald/cyan polygons."""
+    if not space_zones or not transformer:
+        return
+
+    overlay = canvas.copy()
+    for zone in space_zones:
+        cx, cy = zone["center"]
+        r = zone["radius_m"]
+        
+        # Approximate circle with 16 polygon vertices transformed to camera pixels
+        poly_pts = []
+        for angle in np.linspace(0, 2 * math.pi, 16, endpoint=False):
+            px = cx + r * math.cos(angle)
+            py = cy + r * math.sin(angle)
+            pixel_pt, rel = transformer.pitch_to_pixel_checked((px, py))
+            if rel and 0 <= pixel_pt[0] < canvas.shape[1] - PREDICTION_PANEL_WIDTH and 0 <= pixel_pt[1] < canvas.shape[0]:
+                poly_pts.append([int(pixel_pt[0]), int(pixel_pt[1])])
+
+        if len(poly_pts) >= 4:
+            pts_arr = np.array(poly_pts, dtype=np.int32)
+            # Emerald space tint
+            cv2.fillPoly(overlay, [pts_arr], (70, 210, 110))
+            cv2.polylines(overlay, [pts_arr], True, (120, 255, 160), 2, cv2.LINE_AA)
+            
+            # Label
+            center_px, rel_c = transformer.pitch_to_pixel_checked((cx, cy))
+            if rel_c:
+                cpx, cpy = int(center_px[0]), int(center_px[1])
+                cv2.putText(overlay, "EXPLOIT SPACE", (cpx - 44, cpy), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (240, 255, 240), 1, cv2.LINE_AA)
+
+    cv2.addWeighted(overlay, 0.26, canvas, 0.74, 0, canvas)
+
+
+def draw_prediction_panel(frame, prediction, player_pixels, transformer=None):
+    """Add a tactical sidebar, projected pass/shot suggestion paths, and space zone highlights."""
     panel = np.zeros((frame.shape[0], PREDICTION_PANEL_WIDTH, 3), dtype=np.uint8)
     panel[:] = (8, 16, 26)
     canvas = np.concatenate([frame, panel], axis=1)
@@ -156,6 +224,12 @@ def draw_prediction_panel(frame, prediction, player_pixels):
     green = (80, 230, 110)
     faded_yellow = (70, 210, 240)
     electric_blue = (255, 160, 40)
+    purple_accent = (220, 120, 255)
+
+    # 1. Draw Space Zone Highlight Shading on Pitch
+    space_zones = prediction.get("space_zones", [])
+    if space_zones and transformer:
+        draw_space_zone_shading(canvas, space_zones, transformer)
 
     cv2.line(canvas, (panel_x, 0), (panel_x, canvas.shape[0]), (35, 65, 85), 2)
     cv2.putText(canvas, "LIVE TACTICAL INTELLIGENCE", (panel_x + 22, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.65, cyan, 2, cv2.LINE_AA)
@@ -168,7 +242,7 @@ def draw_prediction_panel(frame, prediction, player_pixels):
     possession_text = f"TRACK #{possession}" if possession is not None else "UNCONFIRMED"
     
     cv2.putText(canvas, "TACTICAL PHASE", (panel_x + 22, 122), cv2.FONT_HERSHEY_SIMPLEX, 0.40, muted, 1, cv2.LINE_AA)
-    cv2.putText(canvas, play, (panel_x + 22, 152), cv2.FONT_HERSHEY_SIMPLEX, 0.82, white if quality == "USABLE" else (70, 150, 255), 2, cv2.LINE_AA)
+    cv2.putText(canvas, play, (panel_x + 22, 152), cv2.FONT_HERSHEY_SIMPLEX, 0.76, white if quality == "USABLE" else (70, 150, 255), 2, cv2.LINE_AA)
     cv2.putText(canvas, f"POSSESSION  {possession_text}", (panel_x + 22, 182), cv2.FONT_HERSHEY_SIMPLEX, 0.46, white, 1, cv2.LINE_AA)
 
     suggestions = prediction.get("suggestions", [])
@@ -176,32 +250,46 @@ def draw_prediction_panel(frame, prediction, player_pixels):
     # Render Overlay Trajectory Lines on Pitch
     for sugg in suggestions:
         s_type = sugg.get("type")
+        subtype = sugg.get("subtype", "ground")
+        prob = sugg.get("success_prob")
         from_id = sugg.get("from_track_id")
         source = player_pixels.get(from_id)
         if source is None:
             continue
 
-        if s_type == "pass":
-            tier = sugg.get("tier", "primary")
-            target = player_pixels.get(sugg.get("to_track_id"))
-            if target is None:
-                continue
+        target_pitch = sugg.get("target_pitch_pos")
+        target_pixel = None
+        if subtype == "through_ball" and target_pitch and transformer:
+            px, rel = transformer.pitch_to_pixel_checked(target_pitch)
+            if rel:
+                target_pixel = px
+        if target_pixel is None:
+            target_pixel = player_pixels.get(sugg.get("to_track_id"))
 
-            if tier == "primary":
-                # Primary Best Pass: Crisp Neon Emerald Green
-                draw_tactical_vector(canvas, source, target, color_bgr=(60, 235, 100), alpha=0.92, label="BEST PASS")
+        if target_pixel is None and s_type != "shot":
+            continue
+
+        if "pass" in s_type:
+            tier = sugg.get("tier", "primary")
+            if subtype == "through_ball":
+                col = (40, 235, 255) # Electric Cyan / Gold
+                draw_tactical_vector(canvas, source, target_pixel, color_bgr=col, alpha=0.94, subtype=subtype, prob=prob, label="THROUGH")
+            elif subtype in ("cross", "lob"):
+                col = (235, 120, 255) # Electric Pink/Magenta
+                draw_tactical_vector(canvas, source, target_pixel, color_bgr=col, alpha=0.90, subtype=subtype, prob=prob, label="CROSS")
+            elif tier == "primary":
+                col = (60, 240, 100) # Emerald Neon
+                draw_tactical_vector(canvas, source, target_pixel, color_bgr=col, alpha=0.92, subtype="ground", prob=prob, label="BEST PASS")
             else:
-                # Backup Viable Pass: Faded Subtle Golden-Yellow
-                draw_tactical_vector(canvas, source, target, color_bgr=(50, 200, 230), alpha=0.38, label="BACKUP")
+                col = (50, 195, 230) # Faded Gold
+                draw_tactical_vector(canvas, source, target_pixel, color_bgr=col, alpha=0.45, subtype="ground", prob=prob, label="BACKUP")
 
         elif s_type == "shot":
-            # Shot Opportunity: Ethereal Electric Blue with opacity based on goal probability / xG
             xg = sugg.get("score", 0.3)
             shot_alpha = float(clamp(0.40 + xg * 0.85, 0.40, 0.95))
-            # Direct towards goal post direction
             goal_x = int(canvas.shape[1] - PREDICTION_PANEL_WIDTH - 20) if source[0] > 100 else 20
             goal_pt = (goal_x, int(canvas.shape[0] * 0.5))
-            draw_tactical_vector(canvas, source, goal_pt, color_bgr=(255, 160, 40), alpha=shot_alpha, is_shot=True, label="SHOT")
+            draw_tactical_vector(canvas, source, goal_pt, color_bgr=(255, 160, 40), alpha=shot_alpha, subtype="shot", prob=int(xg*100), label="SHOT")
 
     # Render Sidebar Suggestion Cards
     cv2.putText(canvas, "RECOMMENDED PLAYS", (panel_x + 22, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.48, cyan, 1, cv2.LINE_AA)
@@ -211,24 +299,32 @@ def draw_prediction_panel(frame, prediction, player_pixels):
         y_offset = 265
         for s in suggestions[:3]:
             s_type = s.get("type", "").upper()
+            subtype = s.get("subtype", "ground")
+            prob = s.get("success_prob", 50)
             tier = s.get("tier", "")
             
-            if s_type == "PASS" and tier == "primary":
+            if subtype == "through_ball":
+                title_col = cyan
+                tag = f"[THROUGH BALL ({prob}%)]"
+            elif subtype in ("cross", "lob"):
+                title_col = purple_accent
+                tag = f"[CROSS / LOB ({prob}%)]"
+            elif tier == "primary":
                 title_col = green
-                tag = "[#1 BEST PASS]"
-            elif s_type == "PASS":
+                tag = f"[#1 BEST PASS ({prob}%)]"
+            elif "PASS" in s_type:
                 title_col = faded_yellow
-                tag = "[BACKUP PASS]"
+                tag = f"[BACKUP PASS ({prob}%)]"
             else:
                 title_col = electric_blue
-                tag = f"[SHOT THREAT ({int(s.get('score', 0)*100)}% xG)]"
+                tag = f"[SHOT THREAT ({prob}% xG)]"
 
-            cv2.putText(canvas, f"{tag}  #{s.get('from_track_id','?')} -> #{s.get('to_track_id','GOAL')}", (panel_x + 22, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.52, title_col, 2, cv2.LINE_AA)
+            cv2.putText(canvas, f"{tag}  #{s.get('from_track_id','?')} -> #{s.get('to_track_id','GOAL')}", (panel_x + 22, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.48, title_col, 2, cv2.LINE_AA)
             cv2.putText(canvas, f"xT: +{s.get('expected_threat', 0)}  |  Dist: {s.get('distance_m', s.get('goal_distance_m', 0))}m", (panel_x + 22, y_offset + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.42, white, 1, cv2.LINE_AA)
             
             desc = s.get("desc", "")
             if desc:
-                cv2.putText(canvas, desc[:34], (panel_x + 22, y_offset + 42), cv2.FONT_HERSHEY_SIMPLEX, 0.40, muted, 1, cv2.LINE_AA)
+                cv2.putText(canvas, desc[:36], (panel_x + 22, y_offset + 42), cv2.FONT_HERSHEY_SIMPLEX, 0.38, muted, 1, cv2.LINE_AA)
             y_offset += 72
 
     return canvas
@@ -441,7 +537,7 @@ def run(source_path: str, output_path: str, model_name: str = "yolov8n.pt", conf
         rendered = annotated
         if predictor:
             prediction = predictor.update(frame_idx, frame_idx / fps, players, ball_position)
-            rendered = draw_prediction_panel(annotated, prediction, player_pixels)
+            rendered = draw_prediction_panel(annotated, prediction, player_pixels, transformer=transformer)
             if events_file:
                 events_file.write(json.dumps({
                     "players": [player.__dict__ for player in players],

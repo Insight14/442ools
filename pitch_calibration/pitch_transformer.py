@@ -41,6 +41,14 @@ class PitchTransformer:
         x, y = transformed[0, 0]
         return float(x), float(y)
 
+    def pitch_to_pixel(self, pitch_point) -> tuple:
+        """pitch_point: (x, y) in metres. Returns (x, y) in image pixels."""
+        inv_homography = np.linalg.inv(self.homography)
+        pt = np.array([[pitch_point]], dtype=np.float64)
+        transformed = cv2.perspectiveTransform(pt, inv_homography)
+        x, y = transformed[0, 0]
+        return float(x), float(y)
+
     def is_reliable(self, pitch_point) -> bool:
         """A transformed point that lands far outside the pitch's actual
         bounds (beyond a safety margin) indicates the homography is being
@@ -57,3 +65,10 @@ class PitchTransformer:
         derived from an untrustworthy transform."""
         pitch_point = self.pixel_to_pitch(pixel_point)
         return pitch_point, self.is_reliable(pitch_point)
+
+    def pitch_to_pixel_checked(self, pitch_point):
+        """Convert pitch coordinate back to image pixel if within reliable boundary."""
+        if not self.is_reliable(pitch_point):
+            return None, False
+        pixel_pt = self.pitch_to_pixel(pitch_point)
+        return pixel_pt, True

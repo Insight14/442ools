@@ -445,35 +445,53 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderPassSuggestions(event) {
-        const suggestions = event.pass_suggestions || [];
+        const suggestions = event.suggestions || event.pass_suggestions || [];
         if (suggestions.length === 0) {
             passSuggestionsContainer.innerHTML = `
                 <div class="suggestion-card">
                     <div>
-                        <div class="sugg-target">BALL CARRIER ${event.ball_carrier_id !== undefined ? '#' + event.ball_carrier_id : '--'}</div>
-                        <div class="sugg-desc">Scanning passing lanes & pitch options</div>
+                        <div class="sugg-target">BALL CARRIER ${event.possession_track_id !== undefined && event.possession_track_id !== null ? '#' + event.possession_track_id : '--'}</div>
+                        <div class="sugg-desc">Scanning passing lanes, through balls & pocket space</div>
                     </div>
                     <div class="sugg-metrics">
                         <span class="sugg-xa text-cyan">SCANNING</span>
-                        <span class="sugg-dist">0.67 xA Est.</span>
+                        <span class="sugg-dist">0.65 xT Est.</span>
                     </div>
                 </div>
             `;
             return;
         }
 
-        passSuggestionsContainer.innerHTML = suggestions.map((s, idx) => `
-            <div class="suggestion-card">
-                <div>
-                    <div class="sugg-target">TARGET PLAYER #${s.receiver_id} (${s.receiver_role || 'FWD'})</div>
-                    <div class="sugg-desc">${s.desc || 'Exploit space behind defense'}</div>
+        passSuggestionsContainer.innerHTML = suggestions.map((s, idx) => {
+            const isThrough = s.subtype === 'through_ball';
+            const isCross = s.subtype === 'cross' || s.subtype === 'lob';
+            const isShot = s.type === 'shot';
+            const prob = s.success_prob || Math.round((s.confidence || 0.7) * 100);
+            
+            let tagBadge = '';
+            if (isThrough) {
+                tagBadge = `<span style="color:#00f0ff;font-weight:700;">[THROUGH BALL ${prob}%]</span>`;
+            } else if (isCross) {
+                tagBadge = `<span style="color:#ff28be;font-weight:700;">[CROSS / LOB ${prob}%]</span>`;
+            } else if (isShot) {
+                tagBadge = `<span style="color:#ff6b35;font-weight:700;">[SHOT THREAT ${prob}% xG]</span>`;
+            } else {
+                tagBadge = `<span style="color:#00e676;font-weight:700;">[${s.tier === 'primary' ? '#1 BEST PASS' : 'BACKUP PASS'} ${prob}%]</span>`;
+            }
+
+            return `
+                <div class="suggestion-card" style="border-left: 3px solid ${isThrough ? '#00f0ff' : (isCross ? '#ff28be' : (isShot ? '#ff6b35' : '#00e676'))};">
+                    <div>
+                        <div class="sugg-target">${tagBadge} #${s.from_track_id || '?'} &rarr; #${s.to_track_id || 'GOAL'}</div>
+                        <div class="sugg-desc">${s.desc || 'Exploit space behind defense'}</div>
+                    </div>
+                    <div class="sugg-metrics">
+                        <span class="sugg-xa">+${(s.expected_threat || s.score || 0.08).toFixed(2)} xT</span>
+                        <span class="sugg-dist">${s.distance_m ? s.distance_m.toFixed(1) + 'm' : (s.goal_distance_m ? s.goal_distance_m.toFixed(1) + 'm' : '18.4m')}</span>
+                    </div>
                 </div>
-                <div class="sugg-metrics">
-                    <span class="sugg-xa">${(s.expected_threat || s.score || 0.85).toFixed(2)} xA</span>
-                    <span class="sugg-dist">${s.distance ? s.distance.toFixed(1) + 'm' : '18.4m'}</span>
-                </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
 
     function drawEmptyPitch() {
@@ -519,6 +537,22 @@ document.addEventListener('DOMContentLoaded', () => {
             };
         }
 
+        // Draw Space Zones
+        const spaceZones = event.space_zones || [];
+        spaceZones.forEach(z => {
+            const cpt = toCanvas(z.center[0], z.center[1]);
+            const rPx = (z.radius_m / 105) * (w - 20);
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cpt.cx, cpt.cy, Math.max(8, rPx), 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(0, 230, 118, 0.18)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(0, 230, 118, 0.45)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.restore();
+        });
+
         const players = event.players || [];
         players.forEach(p => {
             if (p.position) {
@@ -530,7 +564,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ctx.fillStyle = '#ffd700';
                 } else if (p.role === 'goalkeeper') {
                     ctx.fillStyle = '#bf40e0';
-                } else if (p.team_id === 1) {
+                } else if (p.team_id === 1 || p.team === 1) {
                     ctx.fillStyle = '#ff5733';
                 } else {
                     ctx.fillStyle = '#3399ff';
@@ -543,38 +577,61 @@ document.addEventListener('DOMContentLoaded', () => {
         const suggestions = event.suggestions || [];
         suggestions.forEach(sugg => {
             const sType = sugg.type;
+            const subtype = sugg.subtype;
             const fromP = players.find(p => p.track_id === sugg.from_track_id);
             if (!fromP || !fromP.position) return;
             const startPt = toCanvas(fromP.position[0], fromP.position[1]);
 
-            if (sType === 'pass') {
-                const toP = players.find(p => p.track_id === sugg.to_track_id);
-                if (!toP || !toP.position) return;
-                const endPt = toCanvas(toP.position[0], toP.position[1]);
+            if (sType === 'pass' || sType === 'through_pass' || sType === 'lob_pass' || sType === 'ground_pass') {
+                let endPt = null;
+                if (sugg.target_pitch_pos) {
+                    endPt = toCanvas(sugg.target_pitch_pos[0], sugg.target_pitch_pos[1]);
+                } else {
+                    const toP = players.find(p => p.track_id === sugg.to_track_id);
+                    if (toP && toP.position) endPt = toCanvas(toP.position[0], toP.position[1]);
+                }
+                if (!endPt) return;
+
                 const isPrimary = sugg.tier === 'primary';
 
                 ctx.save();
                 ctx.beginPath();
                 ctx.moveTo(startPt.cx, startPt.cy);
-                ctx.lineTo(endPt.cx, endPt.cy);
-
-                if (isPrimary) {
-                    // #1 Best Pass: Glowing Neon Emerald Green
-                    ctx.strokeStyle = '#00e676';
+                
+                if (subtype === 'cross' || subtype === 'lob') {
+                    // Arched line
+                    const midX = (startPt.cx + endPt.cx) / 2;
+                    const midY = Math.min(startPt.cy, endPt.cy) - 15;
+                    ctx.quadraticCurveTo(midX, midY, endPt.cx, endPt.cy);
+                    ctx.strokeStyle = '#ff28be';
                     ctx.lineWidth = 2.0;
-                    ctx.shadowColor = '#00e676';
+                    ctx.shadowColor = '#ff28be';
                     ctx.shadowBlur = 8;
                     ctx.stroke();
-                } else {
-                    // Backup Viable Pass: Faded Subtle Golden-Yellow
-                    ctx.strokeStyle = 'rgba(255, 215, 0, 0.40)';
-                    ctx.lineWidth = 1.2;
-                    ctx.setLineDash([3, 4]);
+                } else if (subtype === 'through_ball') {
+                    ctx.lineTo(endPt.cx, endPt.cy);
+                    ctx.strokeStyle = '#00f0ff';
+                    ctx.lineWidth = 2.2;
+                    ctx.shadowColor = '#00f0ff';
+                    ctx.shadowBlur = 10;
                     ctx.stroke();
+                } else {
+                    ctx.lineTo(endPt.cx, endPt.cy);
+                    if (isPrimary) {
+                        ctx.strokeStyle = '#00e676';
+                        ctx.lineWidth = 2.0;
+                        ctx.shadowColor = '#00e676';
+                        ctx.shadowBlur = 8;
+                        ctx.stroke();
+                    } else {
+                        ctx.strokeStyle = 'rgba(255, 215, 0, 0.40)';
+                        ctx.lineWidth = 1.2;
+                        ctx.setLineDash([3, 4]);
+                        ctx.stroke();
+                    }
                 }
                 ctx.restore();
             } else if (sType === 'shot') {
-                // Shot Opportunity: Electric Blue with opacity based on goal probability / xG
                 const xg = sugg.score || 0.35;
                 const shotAlpha = Math.min(0.95, Math.max(0.40, 0.35 + xg * 0.85));
                 const goalPt = toCanvas(105.0, 34.0);
@@ -583,9 +640,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.beginPath();
                 ctx.moveTo(startPt.cx, startPt.cy);
                 ctx.lineTo(goalPt.cx, goalPt.cy);
-                ctx.strokeStyle = `rgba(0, 240, 255, ${shotAlpha})`;
+                ctx.strokeStyle = `rgba(255, 107, 53, ${shotAlpha})`;
                 ctx.lineWidth = 2.2;
-                ctx.shadowColor = '#00f0ff';
+                ctx.shadowColor = '#ff6b35';
                 ctx.shadowBlur = 10;
                 ctx.stroke();
                 ctx.restore();
