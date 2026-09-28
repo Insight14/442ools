@@ -395,26 +395,15 @@ class PlayPredictor:
             shot_option = self._evaluate_shot_option(owner, players)
             space_zones = self._extract_exploitable_space_zones(owner, players)
 
-            # 1. Shot Opportunity Check
-            if shot_option:
+            # 1. Shot Opportunity Check (viable if high threat)
+            if shot_option and shot_option.get("score", 0) >= 0.28:
                 suggestions.append(shot_option)
 
-            # 2. Add Top Passing Options (Through pass, Lob/Cross, Best Ground Pass)
+            # 2. Strict Single Best Pass (Only 1 optimal pass: Ground, Through Ball, Lob, or Cross)
             if pass_candidates:
-                best_pass = pass_candidates[0]
+                best_pass = dict(pass_candidates[0])
                 best_pass["tier"] = "primary"
                 suggestions.append(best_pass)
-
-                seen_subtypes = {best_pass.get("subtype")}
-                for backup in pass_candidates[1:]:
-                    stype = backup.get("subtype")
-                    if stype not in seen_subtypes or (backup["score"] >= 0.60 and len(suggestions) < 3):
-                        seen_subtypes.add(stype)
-                        backup_copy = dict(backup)
-                        backup_copy["tier"] = "backup"
-                        suggestions.append(backup_copy)
-                    if len(suggestions) >= 3:
-                        break
 
         # Detect Completed Passes
         if owner and self.previous_possession and owner.track_id != self.previous_possession["track_id"]:
