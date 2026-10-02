@@ -1,0 +1,128 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: '442ools Meta-Vision: OpenCV 5 & AWS Bedrock Tactical Studio Infrastructure on AWS Graviton'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: 'production'
+    Description: 'Deployment environment name'
+  ContainerImage:
+    Type: String
+    Default: 'public.ecr.aws/442ools/meta-vision:latest'
+    Description: 'ECR container image URI'
+
+Resources:
+  # S3 Bucket for Video Telemetry & Processed Matches
+  MatchVideoBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '442ools-tactical-media-${AWS::AccountId}-${AWS::Region}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT, POST]
+            AllowedOrigins: ['*']
+            MaxAge: 3000
+
+  # IAM Execution Role with Bedrock & S3 Access
+  ECSExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '442ools-ECSExecutionRole-${EnvironmentName}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ecs-tasks.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '442ools-ECSTaskRole-${EnvironmentName}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ecs-tasks.amazonaws.com]
+            Action: ['sts:AssumeRole']
+      Policies:
+        - PolicyName: BedrockAgenticVisionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'bedrock:InvokeModel'
+                  - 'bedrock:InvokeModelWithResponseStream'
+                Resource: '*'
+        - PolicyName: S3MediaStoragePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                  - 's3:ListBucket'
+                Resource:
+                  - !GetAtt MatchVideoBucket.Arn
+                  - !Sub '${MatchVideoBucket.Arn}/*'
+
+  # ECS Cluster for AWS Graviton (ARM64)
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '442ools-cluster-${EnvironmentName}'
+
+  # Task Definition targeting Graviton / ARM64
+  ECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '442ools-task-${EnvironmentName}'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '2048'
+      Memory: '4096'
+      RuntimePlatform:
+        CpuArchitecture: ARM64
+        OperatingSystemFamily: LINUX
+      ExecutionRoleArn: !GetAtt ECSExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: '442ools-engine'
+          Image: !Ref ContainerImage
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8000
+              Protocol: tcp
+          Environment:
+            - Name: S3_BUCKET_NAME
+              Value: !Ref MatchVideoBucket
+            - Name: AWS_DEFAULT_REGION
+              Value: !Ref 'AWS::Region'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub '/ecs/442ools-${EnvironmentName}'
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: 'ecs'
+              awslogs-create-group: 'true'
+
+Outputs:
+  S3BucketName:
+    Description: 'S3 Bucket for Match Video Storage'
+    Value: !Ref MatchVideoBucket
+  ECSClusterName:
+    Description: 'ECS Graviton Cluster'
+    Value: !Ref ECSCluster

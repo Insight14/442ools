@@ -205,9 +205,41 @@ def get_job_status(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
     return analysis_jobs[job_id]
 
+from src.aws_agentic_coach import agentic_coach
+
+@app.get("/api/aws-status")
+def get_aws_status():
+    return {
+        "aws_bedrock_live": agentic_coach.is_aws_live(),
+        "model_id": agentic_coach.model_id,
+        "region": agentic_coach.region_name,
+        "mode": "Live AWS Bedrock" if agentic_coach.is_aws_live() else "Local Blueprint / Autonomous Fallback",
+        "graviton_cool_optimized": True,
+        "opencv_version": "5.0.0-dev / 4.10.0 (COOL Compatible)"
+    }
+
+@app.post("/api/agentic-vision")
+async def evaluate_agentic_vision(payload: Optional[dict] = None):
+    telemetry = payload or {
+        "carrier_id": 10,
+        "x": 68.4,
+        "y": 32.1,
+        "stance_balance": 0.88,
+        "defender_dist": 2.4,
+        "closing_speed": 1.4,
+        "best_pass_target": "7",
+        "pass_prob": 0.74,
+        "delta_xt": 0.048,
+        "defensive_compactness": 0.62,
+        "timestamp": time.time()
+    }
+    decision = agentic_coach.analyze_tactical_state(telemetry)
+    return decision
+
 app.mount("/media/input_videos", StaticFiles(directory=str(INPUT_DIR)), name="input_videos")
 app.mount("/media/output_videos", StaticFiles(directory=str(OUTPUT_DIR)), name="output_videos")
 app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+

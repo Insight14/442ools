@@ -127,11 +127,19 @@ document.addEventListener('DOMContentLoaded', () => {
             state.systemStatus = data;
             state.homographies = data.homographies || [];
 
-            if (data.custom_model_available) {
-                systemStatusText.textContent = "CORE ONLINE // YOLOv8 CUSTOM READY";
-            } else {
-                systemStatusText.textContent = "CORE ONLINE // COCO BASELINE MODE";
-                selectModel.value = "coco";
+            // Fetch AWS & OpenCV 5 Cloud Status
+            try {
+                const awsRes = await fetch('/api/aws-status');
+                const awsData = await awsRes.json();
+                state.awsStatus = awsData;
+                systemStatusText.textContent = `OPENCV 5 // AWS BEDROCK: ${awsData.aws_bedrock_live ? 'LIVE' : 'BLUEPRINT READY'}`;
+            } catch (err) {
+                if (data.custom_model_available) {
+                    systemStatusText.textContent = "CORE ONLINE // OPENCV 5 + YOLOv8 READY";
+                } else {
+                    systemStatusText.textContent = "CORE ONLINE // OPENCV 5 BASELINE MODE";
+                    selectModel.value = "coco";
+                }
             }
 
             // Render Homography Options
