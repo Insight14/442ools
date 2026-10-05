@@ -1,5 +1,5 @@
 # 442OOLS: OpenCV 5 & AWS Graviton / x86 Multi-Arch Container
-FROM python:3.10-slim-bullseye
+FROM python:3.10-slim
 
 # Install system dependencies for OpenCV 5, video codecs, and OpenGL
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsm6 \
     libxext6 \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     curl \
     git \
@@ -31,4 +31,5 @@ EXPOSE 8000
 ENV PYTHONUNBUFFERED=1
 ENV AWS_DEFAULT_REGION=us-east-1
 
-CMD ["uvicorn", "server.py:app", "--host", "0.0.0.0", "--port", "8000"]
+# Support dynamic Render $PORT or default to 8000
+CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000}"]
